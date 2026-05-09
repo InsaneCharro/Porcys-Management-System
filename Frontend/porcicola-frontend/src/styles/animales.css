@@ -1,0 +1,54 @@
+.estado {
+  padding: 5px 10px;
+  border-radius: 8px;
+  color: white;
+  font-size: 12px;
+}
+
+/* 🟢 */
+.estado.activo {
+  background-color: green;
+}
+
+/* 🔴 */
+.estado.muerto {
+  background-color: red;
+}
+
+/* 🟡 */
+.estado.vendido {
+  background-color: orange;
+}
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.tabla th {
+  background: #1e293b;
+  color: white;
+  padding: 10px;
+}
+
+.tabla td {
+  padding: 10px;
+  text-align: center;
+}
+
+.tabla tr:nth-child(even) {
+  background: #1e293b; /* gris oscuro */
+}
+
+.tabla tr:nth-child(odd) {
+  background: #0f172a; /* más oscuro */
+}
+
+.tabla tr:hover {
+  background: #334155;
+  transition: 0.2s;
+}
+.tabla td {
+  border-bottom: 1px solid #334155;
+}
