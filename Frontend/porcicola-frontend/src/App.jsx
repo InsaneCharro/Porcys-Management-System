@@ -14,6 +14,7 @@ import Maternidad from "./pages/Maternidad";
 import DetalleCamada from "./pages/DetalleCamada";
 import Clientes from "./pages/Clientes";
 import Reportes from "./pages/Reportes";
+import Finanzas from './pages/Finanzas';
 function App() {
   return (
     <Router>
@@ -32,6 +33,7 @@ function App() {
         <Route path="/maternidad/:id" element={<DetalleCamada />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/reportes" element={<Reportes />} />
+        <Route path="/finanzas" element={<Finanzas />} />
       </Routes>
     </Router>
   );

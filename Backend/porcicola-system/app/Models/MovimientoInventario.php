@@ -6,11 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 
 class MovimientoInventario extends Model
 {
+    protected $table = 'movimientos_inventario';
+
     protected $fillable = [
-        'producto_id',
+        'inventario_id',
         'tipo',
-        'cantidad_kg',
-        'fecha',
-        'descripcion'
+        'cantidad',
+        'tipo_origen',
+        'referencia_id'
     ];
 }

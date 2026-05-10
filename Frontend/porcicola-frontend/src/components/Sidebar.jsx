@@ -63,6 +63,8 @@ export default function Sidebar() {
 
         <li><Link to="/reportes">Reportes</Link></li>
 
+        <li><Link to="/finanzas">💰 Finanzas</Link></li>
+
       </ul>
 
     </div>

@@ -30,6 +30,13 @@ export default function Reportes() {
         );
     };
 
+    const descargarVentasExcel = () => {
+      window.open(
+        "http://127.0.0.1:8000/api/reportes/ventas-excel",
+        "_blank"
+      );
+    };
+
   return (
     <div className="container">
       <h1 className="title">📄 Reportes PORCYS</h1>
@@ -83,6 +90,19 @@ export default function Reportes() {
             >
                 Descargar PDF
             </button>
+        </div>
+
+        <div className="card kpi-card">
+          <h3>📊 Excel de ventas</h3>
+          <p>Exportar ventas en formato Excel (.xlsx)</p>
+
+          <button
+            className="btn"
+            onClick={descargarVentasExcel}
+            style={{ background: "#2E7D32", color: "white" }}
+          >
+            Exportar Excel
+          </button>
         </div>
 
       </div>
