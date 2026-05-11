@@ -6,6 +6,7 @@ import Sidebar from "./components/Sidebar";
 import DashboardPage from "./pages/DashboardPage";
 import AnimalesPage from "./pages/AnimalesPage";
 import VentasPage from "./pages/VentasPage";
+import Gestaciones from "./pages/Gestaciones";
 import AnimalDetalle from "./pages/AnimalDetalle";
 import Alertas from "./pages/Alertas";
 import Inventario from "./pages/Inventario";
@@ -40,6 +41,7 @@ function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/animales" element={<AnimalesPage />} />
             <Route path="/ventas" element={<VentasPage />} />
+            <Route path="/gestaciones" element={<Gestaciones />} />
             <Route path="/animales/:id" element={<AnimalDetalle />} />
             <Route path="/alertas" element={<Alertas />} />
             <Route path="/inventario" element={<Inventario />} />

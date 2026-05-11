@@ -4,26 +4,35 @@ namespace App\Http\Controllers;
 
 use App\Models\Gestacion;
 use App\Models\Animal;
-use Illuminate\Http\Request;
-use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use App\Models\Camada;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class GestacionController extends Controller
 {
-    // 📋 Ver todas las gestaciones
     public function index()
     {
-        return Gestacion::with('animal')->get();
+        return Gestacion::with('animal')
+            ->orderByDesc('id')
+            ->get();
     }
 
-    // ➕ Registrar intento de gestación
     public function store(Request $request)
     {
         $request->validate([
             'animal_id' => 'required|exists:animales,id',
-            'fecha_inicio' => 'required|date'
+            'fecha_inicio' => 'required|date',
+            'tipo_servicio' => 'nullable|string'
         ]);
+
+        $animal = Animal::findOrFail($request->animal_id);
+
+        if ($animal->sexo !== 'hembra') {
+            return response()->json([
+                'error' => 'Solo hembras pueden gestarse'
+            ], 400);
+        }
 
         $activa = Gestacion::where('hembra_id', $request->animal_id)
             ->whereIn('estado', ['activa', 'confirmada'])
@@ -34,45 +43,51 @@ class GestacionController extends Controller
                 'error' => 'La hembra ya tiene una gestación activa'
             ], 400);
         }
-        $gestacion = new Gestacion();
 
-        $gestacion->hembra_id = $request->animal_id;        $gestacion->fecha_inicio = $request->fecha_inicio;
-        $gestacion->estado = 'activa';
-        $gestacion->fecha_inicio = $request->fecha_inicio;
-
-        // calcular fecha estimada (114 días)
-        $gestacion->fecha_probable_parto = Carbon::parse($request->fecha_inicio)->addDays(114);
-        $gestacion->save();
+        $gestacion = Gestacion::create([
+            'animal_id' => $request->animal_id,
+            'hembra_id' => $request->animal_id,
+            'tipo_servicio' => $request->tipo_servicio ?? 'natural',
+            'fecha_inicio' => $request->fecha_inicio,
+            'fecha_probable_parto' => Carbon::parse($request->fecha_inicio)->addDays(114),
+            'estado' => 'activa',
+            'resultado' => null,
+            'intentos' => 1,
+        ]);
 
         return response()->json($gestacion, 201);
     }
 
-    // ✅ Confirmar preñez
     public function confirmar($id)
     {
         $gestacion = Gestacion::findOrFail($id);
 
         if ($gestacion->estado !== 'activa') {
-            return response()->json(['error' => 'La gestación no está en proceso'], 400);
+            return response()->json([
+                'error' => 'Solo gestaciones activas pueden confirmarse'
+            ], 400);
         }
 
         $gestacion->estado = 'confirmada';
+        $gestacion->resultado = 'preñada';
         $gestacion->save();
 
-        return $gestacion;
+        return response()->json($gestacion);
     }
 
     public function marcarFallida($id)
     {
         $gestacion = Gestacion::findOrFail($id);
 
-        if ($gestacion->estado !== 'activa') {
+        if (!in_array($gestacion->estado, ['activa', 'confirmada'])) {
             return response()->json([
-                'error' => 'Solo gestaciones en proceso pueden marcarse como fallidas'
+                'error' => 'No puede marcarse como fallida'
             ], 400);
         }
 
         $gestacion->estado = 'fallida';
+        $gestacion->resultado = 'no preñada';
+        $gestacion->fecha_fin = now();
         $gestacion->save();
 
         return response()->json($gestacion);
@@ -84,7 +99,7 @@ class GestacionController extends Controller
             'machos' => 'required|integer|min:0',
             'hembras' => 'required|integer|min:0',
             'muertos' => 'nullable|integer|min:0',
-            'pesos' => 'required|array',
+            'pesos' => 'required|array'
         ]);
 
         $gestacion = Gestacion::findOrFail($id);
@@ -102,87 +117,58 @@ class GestacionController extends Controller
         $vivos = $machos + $hembras;
         $total = $vivos + $muertos;
 
-        if (count($request->pesos) != $vivos) {
+        if (count($request->pesos) !== $vivos) {
             return response()->json([
-                'error' => 'Los pesos deben coincidir SOLO con lechones vivos'
+                'error' => 'Los pesos deben coincidir con lechones vivos'
             ], 400);
         }
 
         DB::beginTransaction();
 
         try {
-
             $madreId = $gestacion->hembra_id;
 
-            // =========================
-            // 🧮 PESO PROMEDIO
-            // =========================
             $promedio = collect($request->pesos)->avg();
 
-            // =========================
-            // 🐷 CREAR CAMADA
-            // =========================
-            $camada = \App\Models\Camada::create([
+            $camada = Camada::create([
                 'gestacion_id' => $gestacion->id,
                 'madre_id' => $madreId,
                 'fecha_parto' => now(),
-
                 'total_crias' => $total,
                 'machos' => $machos,
                 'hembras' => $hembras,
-
                 'muertos' => $muertos,
                 'vivos' => $vivos,
-
                 'peso_promedio_nacimiento' => $promedio,
-
                 'estado' => 'activa'
             ]);
 
-            // =========================
-            // 🐖 CREAR LECHONES
-            // =========================
             for ($i = 0; $i < $vivos; $i++) {
-
-                $sexo = ($i < $machos)
-                    ? 'macho'
-                    : 'hembra';
-
                 Animal::create([
                     'identificador_unico' => $this->generarIdentificador(),
-                    'sexo' => $sexo,
-
+                    'sexo' => $i < $machos ? 'macho' : 'hembra',
                     'peso' => $request->pesos[$i],
-
                     'madre_id' => $madreId,
-
                     'fecha_nacimiento' => now(),
-
                     'etapa_actual' => 'lechon',
-
                     'estado' => 'activo',
-
                     'raza' => 'pendiente'
                 ]);
             }
 
-            // =========================
-            // ✅ ACTUALIZAR GESTACIÓN
-            // =========================
             $gestacion->estado = 'parida';
             $gestacion->fecha_parto_real = now();
+            $gestacion->fecha_fin = now();
             $gestacion->cantidad_crias = $total;
             $gestacion->save();
 
             DB::commit();
 
             return response()->json([
-                'mensaje' => 'Parto y camada registrados correctamente',
+                'mensaje' => 'Parto registrado correctamente',
                 'camada' => $camada
             ]);
-
         } catch (\Exception $e) {
-
             DB::rollBack();
 
             return response()->json([
@@ -191,18 +177,9 @@ class GestacionController extends Controller
         }
     }
 
-    private function generarIdentificador()
-    {
-        $ultimo = Animal::latest('id')->first();
-
-        $numero = $ultimo ? $ultimo->id + 1 : 1;
-
-        return 'L' . str_pad($numero, 4, '0', STR_PAD_LEFT);
-    }
-
     public function alertasInteligentes()
     {
-        $gestaciones = \App\Models\Gestacion::with('animal')
+        $gestaciones = Gestacion::with('animal')
             ->where('estado', 'confirmada')
             ->get();
 
@@ -210,20 +187,11 @@ class GestacionController extends Controller
         $hoy = now();
 
         foreach ($gestaciones as $g) {
-
             if (!$g->fecha_probable_parto) continue;
 
             $diasRestantes = $hoy->diffInDays($g->fecha_probable_parto, false);
 
-            // ⚠️ ALERTA: faltan 10 días o menos
             if ($diasRestantes <= 10 && $diasRestantes >= 0) {
-
-                // 🔁 CAMBIO AUTOMÁTICO DE ÁREA
-                if ($g->animal && $g->animal->area !== 'maternidad') {
-                    $g->animal->area = 'maternidad';
-                    $g->animal->save();
-                }
-
                 $alertas[] = [
                     'tipo' => 'proximo_parto',
                     'animal_id' => $g->animal->id ?? null,
@@ -233,7 +201,6 @@ class GestacionController extends Controller
                 ];
             }
 
-            // 🔴 ATRASO (ya debió parir)
             if ($diasRestantes < 0) {
                 $alertas[] = [
                     'tipo' => 'parto_atrasado',
@@ -250,58 +217,11 @@ class GestacionController extends Controller
         ]);
     }
 
-    public function procesarPartosAutomaticos()
+    private function generarIdentificador()
     {
-        $gestaciones = Gestacion::where('estado', 'confirmada')
-            ->whereNotNull('fecha_probable_parto')
-            ->whereDate('fecha_probable_parto', '<=', now())
-            ->get();
+        $ultimo = Animal::latest('id')->first();
+        $numero = $ultimo ? $ultimo->id + 1 : 1;
 
-        foreach ($gestaciones as $gestacion) {
-
-            DB::beginTransaction();
-
-            try {
-
-                // 🐖 1. Marcar como parida
-                $gestacion->estado = 'parida';
-                $gestacion->fecha_parto_real = now();
-                $gestacion->save();
-
-                // 🐷 2. Generar lechones
-                $cantidad = $gestacion->cantidad_crias ?? rand(8, 14);
-
-                for ($i = 1; $i <= $cantidad; $i++) {
-
-                    Animal::create([
-                        'identificador_unico' => 'L' . strtoupper(uniqid()),
-                        'sexo' => rand(0,1) ? 'macho' : 'hembra',
-                        'etapa_actual' => 'lechon',
-                        'estado' => 'activo',
-                        'fecha_nacimiento' => now(),
-
-                        'madre_id' => $gestacion->animal_id,
-                        'padre_id' => null
-                    ]);
-                }
-
-                // 🧬 3. Actualizar madre
-                $madre = Animal::find($gestacion->animal_id);
-
-                if ($madre) {
-                    $madre->etapa_actual = 'reproductor';
-                    $madre->save();
-                }
-
-                DB::commit();
-
-            } catch (\Exception $e) {
-                DB::rollBack();
-            }
-        }
-
-        return response()->json([
-            'mensaje' => 'Partos procesados correctamente'
-        ]);
+        return 'L' . str_pad($numero, 4, '0', STR_PAD_LEFT);
     }
 }

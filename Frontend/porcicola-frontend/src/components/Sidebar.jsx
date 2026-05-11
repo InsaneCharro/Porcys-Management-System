@@ -23,7 +23,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         <li><Link to="/">{collapsed ? "📊" : "📊 Dashboard"}</Link></li>
         <li><Link to="/animales">{collapsed ? "🐖" : "🐖 Animales"}</Link></li>
         <li><Link to="/ventas">{collapsed ? "💰" : "💰 Ventas"}</Link></li>
-        <li><Link to="#">{collapsed ? "⏰" : "⏰ Gestaciones"}</Link></li>
+        <li><Link to="/gestaciones">{collapsed ? "⏰" : "⏰ Gestaciones"}</Link></li>
         <li><Link to="/maternidad">{collapsed ? "🐷" : "🐷 Maternidad"}</Link></li>
         <li><Link to="/corrales">{collapsed ? "🚜" : "🚜 Corrales"}</Link></li>
         <li><Link to="#">{collapsed ? "🫛" : "🫛 Alimento"}</Link></li>
