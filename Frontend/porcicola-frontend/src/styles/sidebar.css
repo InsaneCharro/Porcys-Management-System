@@ -7,21 +7,26 @@
   left: 0;
   top: 0;
   padding: 20px;
+  transition: all 0.3s ease;
+  overflow-x: hidden;
 }
 
-.sidebar h2 {
-  margin-bottom: 30px;
+.sidebar.collapsed {
+  width: 70px;
+  padding: 20px 10px;
 }
 
 .sidebar ul {
   list-style: none;
   padding: 0;
+  margin-top: 20px;
 }
 
 .sidebar li {
-  padding: 10px 0;
+  padding: 12px 0;
   cursor: pointer;
   color: #94a3b8;
+  font-size: 18px;
 }
 
 .sidebar li:hover {
@@ -31,6 +36,7 @@
 .sidebar a {
   text-decoration: none;
   color: inherit;
+  display: block;
 }
 
 .sidebar a:hover {
@@ -39,18 +45,24 @@
 
 .sidebar-header {
   display: flex;
-  flex-direction: column;   /* 👈 clave */
-  align-items: center;      /* 👈 centra horizontal */
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  padding: 20px 10px;
   text-align: center;
+  padding: 20px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
 .sidebar-logo {
-  width: 60px;       /* un poco más grande */
+  width: 60px;
   height: 60px;
   object-fit: contain;
   margin-bottom: 8px;
+}
+
+.sidebar.collapsed .sidebar-logo {
+  width: 40px;
+  height: 40px;
 }
 
 .sidebar-title {
@@ -59,6 +71,11 @@
   color: white;
 }
 
-.sidebar-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+.toggle-btn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  margin-bottom: 10px;
 }

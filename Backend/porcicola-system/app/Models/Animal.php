@@ -21,8 +21,6 @@ class Animal extends Model
         'peso'
     ];
 
-    // 🔗 Relaciones
-
     public function gestaciones()
     {
         return $this->hasMany(Gestacion::class, 'hembra_id');
@@ -53,4 +51,8 @@ class Animal extends Model
         return $this->hasMany(Camada::class, 'madre_id');
     }
 
+    public function ventas()
+    {
+        return $this->hasMany(VentaAnimal::class, 'animal_id');
+    }
 }

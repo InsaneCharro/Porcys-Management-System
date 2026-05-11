@@ -9,22 +9,25 @@ class Venta extends Model
     protected $table = 'ventas';
 
     protected $fillable = [
-        'animal_id',
+        'folio',
         'cliente_id',
         'tipo_venta',
-        'precio_kg',
-        'peso_venta',
+        'subtotal',
+        'iva',
+        'descuento',
         'total',
-        'fecha'
+        'fecha',
+        'estado',
+        'observaciones'
     ];
-
-    public function animal()
-    {
-        return $this->belongsTo(Animal::class);
-    }
 
     public function cliente()
     {
         return $this->belongsTo(Cliente::class);
+    }
+
+    public function detalleAnimales()
+    {
+        return $this->hasMany(VentaAnimal::class, 'venta_id');
     }
 }

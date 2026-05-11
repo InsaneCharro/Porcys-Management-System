@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { useState } from "react";
 
 import Sidebar from "./components/Sidebar";
 
@@ -14,27 +15,45 @@ import Maternidad from "./pages/Maternidad";
 import DetalleCamada from "./pages/DetalleCamada";
 import Clientes from "./pages/Clientes";
 import Reportes from "./pages/Reportes";
-import Finanzas from './pages/Finanzas';
+import Finanzas from "./pages/Finanzas";
+import Compras from "./pages/Compras";
+
 function App() {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
     <Router>
-      <Sidebar />
+      <div style={{ display: "flex" }}>
+        <Sidebar
+          collapsed={collapsed}
+          setCollapsed={setCollapsed}
+        />
 
-      <Routes>
-        <Route path="/" element={<DashboardPage />} />
-        <Route path="/animales" element={<AnimalesPage />} />
-        <Route path="/ventas" element={<VentasPage />} />
-        <Route path="/animales/:id" element={<AnimalDetalle />} />
-        <Route path="/alertas" element={<Alertas />} />
-        <Route path="/inventario" element={<Inventario />} />
-        <Route path="/corrales" element={<Corrales />} />
-        <Route path="/corrales/:id" element={<CorralDetalle />} />
-        <Route path="/maternidad" element={<Maternidad />} />
-        <Route path="/maternidad/:id" element={<DetalleCamada />} />
-        <Route path="/clientes" element={<Clientes />} />
-        <Route path="/reportes" element={<Reportes />} />
-        <Route path="/finanzas" element={<Finanzas />} />
-      </Routes>
+        <div
+          style={{
+            marginLeft: collapsed ? "90px" : "260px",
+            width: "100%",
+            transition: "all 0.3s ease",
+          }}
+        >
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/animales" element={<AnimalesPage />} />
+            <Route path="/ventas" element={<VentasPage />} />
+            <Route path="/animales/:id" element={<AnimalDetalle />} />
+            <Route path="/alertas" element={<Alertas />} />
+            <Route path="/inventario" element={<Inventario />} />
+            <Route path="/corrales" element={<Corrales />} />
+            <Route path="/corrales/:id" element={<CorralDetalle />} />
+            <Route path="/maternidad" element={<Maternidad />} />
+            <Route path="/maternidad/:id" element={<DetalleCamada />} />
+            <Route path="/clientes" element={<Clientes />} />
+            <Route path="/reportes" element={<Reportes />} />
+            <Route path="/finanzas" element={<Finanzas />} />
+            <Route path="/compras" element={<Compras />} />
+          </Routes>
+        </div>
+      </div>
     </Router>
   );
 }

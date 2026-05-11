@@ -13,7 +13,8 @@ class Medicamento extends Model
         'tipo',
         'descripcion',
         'stock',
-        'unidad'
+        'unidad',
+        'precio_unitario'
     ];
 
     public function movimientos()

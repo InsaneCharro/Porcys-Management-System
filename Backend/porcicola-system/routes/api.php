@@ -207,3 +207,19 @@ Route::post('/finanzas/consumo-diario', [ReporteController::class, 'registrarCon
 Route::get('/finanzas/resumen', [ReporteController::class, 'resumenFinanciero']);
 Route::get('/finanzas/pdf', [ReporteController::class, 'finanzasPdf']);
 Route::get('/finanzas/excel', [ReporteController::class, 'finanzasExcel']);
+
+use App\Http\Controllers\API\ProveedorController;
+Route::apiResource('proveedores', ProveedorController::class);
+
+use App\Http\Controllers\API\SolicitudCompraController;
+Route::get('/solicitudes-compra', [SolicitudCompraController::class, 'index']);
+Route::get('/solicitudes-compra/{id}', [SolicitudCompraController::class, 'show']);
+Route::post('/solicitudes-compra', [SolicitudCompraController::class, 'store']);
+Route::patch('/solicitudes-compra/{id}/estado', [SolicitudCompraController::class, 'cambiarEstado']);
+
+use App\Http\Controllers\API\OrdenCompraController;
+Route::post('/ordenes-compra/desde-solicitud', [OrdenCompraController::class, 'desdeSolicitud']);
+Route::get('/ordenes-compra', [OrdenCompraController::class, 'index']);
+
+use App\Http\Controllers\API\RecepcionCompraController;
+Route::post('/recepciones-compra', [RecepcionCompraController::class, 'recibir']);
