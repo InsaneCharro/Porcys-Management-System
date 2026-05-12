@@ -82,14 +82,6 @@ Route::post('/inventario/consumo', [InventarioController::class, 'consumoAutomat
 Route::get('/gestaciones/alertas-inteligentes', [GestacionController::class, 'alertasInteligentes']);
 Route::post('/gestaciones/partos', [GestacionController::class, 'procesarPartosAutomaticos']);
 
-use App\Http\Controllers\EventoSanitarioLechonController;
-Route::post('/sanidad/lechon', [EventoSanitarioLechonController::class, 'store']);
-Route::get('/sanidad/lechon/{id}', function ($id) {
-    return \App\Models\EventoSanitarioLechon::with('medicamento')
-        ->where('lechon_id', $id)
-        ->get();
-});
-
 use App\Models\Corral;
 use App\Models\Animal;
 use App\Models\Lechon;
@@ -221,3 +213,9 @@ Route::get('/ordenes-compra', [OrdenCompraController::class, 'index']);
 
 use App\Http\Controllers\API\RecepcionCompraController;
 Route::post('/recepciones-compra', [RecepcionCompraController::class, 'recibir']);
+
+use App\Http\Controllers\EventoSanitarioController;
+Route::get('/sanidad', [EventoSanitarioController::class, 'index']);
+Route::post('/sanidad', [EventoSanitarioController::class, 'store']);
+Route::get('/sanidad/historial/{animalId}', [EventoSanitarioController::class, 'historial']);
+Route::get('/sanidad/alertas', [EventoSanitarioController::class, 'alertas']);
