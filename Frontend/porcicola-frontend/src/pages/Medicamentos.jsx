@@ -1,0 +1,488 @@
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+
+const API = 'http://127.0.0.1:8000/api';
+
+export default function Medicamentos() {
+  const [tab, setTab] = useState('inventario');
+  const [medicamentos, setMedicamentos] = useState([]);
+  const [animales, setAnimales] = useState([]);
+  const [movimientos, setMovimientos] = useState([]);
+  const [alertas, setAlertas] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const [medicamentoForm, setMedicamentoForm] = useState({
+    nombre: '',
+    descripcion: '',
+    stock: '',
+    precio_unitario: '',
+  });
+
+  const [entradaForm, setEntradaForm] = useState({
+    medicamento_id: '',
+    cantidad: '',
+    motivo: '',
+  });
+
+  const [aplicacionForm, setAplicacionForm] = useState({
+    animal_id: '',
+    medicamento_id: '',
+    dosis: '',
+    fecha: '',
+  });
+
+  useEffect(() => {
+    cargarDatos();
+  }, []);
+
+  const cargarDatos = async () => {
+    setLoading(true);
+
+    try {
+      const [medRes, movRes, alertRes, animalesRes] = await Promise.all([
+        axios.get(`${API}/medicamentos`),
+        axios.get(`${API}/medicamentos/movimientos`),
+        axios.get(`${API}/medicamentos/alertas`),
+        axios.get(`${API}/animales`),
+        ]);
+
+      setMedicamentos(medRes.data || []);
+      setAnimales(
+        (animalesRes.data || []).filter(
+            (animal) => animal.estado === 'activo'
+        )
+        );
+      setMovimientos(movRes.data || []);
+      setAlertas(alertRes.data || []);
+    } catch (error) {
+      console.error(error);
+      alert('Error cargando módulo de medicamentos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const crearMedicamento = async () => {
+    try {
+      await axios.post(`${API}/medicamentos`, medicamentoForm);
+
+      setMedicamentoForm({
+        nombre: '',
+        descripcion: '',
+        stock: '',
+        precio_unitario: '',
+      });
+
+      cargarDatos();
+      alert('Medicamento registrado');
+    } catch (error) {
+      console.error(error);
+      alert('Error creando medicamento');
+    }
+  };
+
+  const registrarEntrada = async () => {
+    if (!entradaForm.medicamento_id) {
+      alert('Selecciona un medicamento');
+      return;
+    }
+
+    try {
+      await axios.post(
+        `${API}/medicamentos/${entradaForm.medicamento_id}/entrada`,
+        {
+          cantidad: entradaForm.cantidad,
+          motivo: entradaForm.motivo,
+        }
+      );
+
+      setEntradaForm({
+        medicamento_id: '',
+        cantidad: '',
+        motivo: '',
+      });
+
+      cargarDatos();
+      alert('Entrada registrada');
+    } catch (error) {
+      console.error(error);
+      alert('Error registrando entrada');
+    }
+  };
+
+  const aplicarMedicamento = async () => {
+    try {
+      await axios.post(`${API}/medicamentos/aplicar`, aplicacionForm);
+
+      setAplicacionForm({
+        animal_id: '',
+        medicamento_id: '',
+        dosis: '',
+        fecha: '',
+      });
+
+      cargarDatos();
+      alert('Medicamento aplicado');
+    } catch (error) {
+      console.error(error);
+      alert(
+        error.response?.data?.message ||
+        'Error aplicando medicamento'
+      );
+    }
+  };
+
+  const styles = {
+    container: {
+      padding: '20px 30px',
+      backgroundColor: '#f8fafc',
+      minHeight: '100vh',
+      color: '#1e293b',
+      boxSizing: 'border-box',
+      overflowX: 'hidden',
+    },
+    title: {
+      fontSize: '36px',
+      fontWeight: '700',
+      marginBottom: '18px',
+      color: '#0f172a',
+    },
+    tabs: {
+      display: 'flex',
+      gap: '10px',
+      marginBottom: '25px',
+      flexWrap: 'wrap',
+    },
+    tabButton: (active) => ({
+      padding: '12px 22px',
+      borderRadius: '12px',
+      border: 'none',
+      cursor: 'pointer',
+      backgroundColor: active ? '#2563eb' : '#dbeafe',
+      color: active ? '#ffffff' : '#1e3a8a',
+      fontWeight: '700',
+      fontSize: '14px',
+      transition: 'all 0.2s ease',
+    }),
+    card: {
+      background: '#ffffff',
+      borderRadius: '16px',
+      padding: '28px',
+      boxShadow: '0 6px 24px rgba(15, 23, 42, 0.08)',
+      marginTop: '20px',
+      marginBottom: '20px',
+      boxSizing: 'border-box',
+    },
+    input: {
+      padding: '10px 14px',
+      height: '44px',
+      borderRadius: '10px',
+      border: '1px solid #cbd5e1',
+      backgroundColor: '#ffffff',
+      color: '#1e293b',
+      minWidth: '200px',
+      fontSize: '15px',
+    },
+    button: {
+      padding: '10px 16px',
+      borderRadius: '10px',
+      border: 'none',
+      backgroundColor: '#2563eb',
+      color: '#fff',
+      cursor: 'pointer',
+      fontWeight: '600',
+    },
+    table: {
+      width: '100%',
+      borderCollapse: 'collapse',
+      marginTop: '20px',
+    },
+    th: {
+      textAlign: 'left',
+      padding: '12px',
+      backgroundColor: '#e2e8f0',
+    },
+    td: {
+      padding: '12px',
+      borderBottom: '1px solid #e2e8f0',
+    },
+  };
+
+  return (
+    <div style={styles.container}>
+      <h1 style={styles.title}>Medicamentos</h1>
+
+      <div style={styles.tabs}>
+        {['inventario', 'entradas', 'aplicaciones', 'movimientos', 'alertas'].map((t) => (
+          <button
+            key={t}
+            style={styles.tabButton(tab === t)}
+            onClick={() => setTab(t)}
+          >
+            {t.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      {loading && <p>Cargando...</p>}
+
+      {tab === 'inventario' && (
+        <div style={styles.card}>
+          <h2>Inventario de medicamentos</h2>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <input
+              style={styles.input}
+              placeholder='Nombre'
+              value={medicamentoForm.nombre}
+              onChange={(e) =>
+                setMedicamentoForm({
+                  ...medicamentoForm,
+                  nombre: e.target.value,
+                })
+              }
+            />
+
+            <input
+              style={styles.input}
+              placeholder='Descripción'
+              value={medicamentoForm.descripcion}
+              onChange={(e) =>
+                setMedicamentoForm({
+                  ...medicamentoForm,
+                  descripcion: e.target.value,
+                })
+              }
+            />
+
+            <input
+              style={styles.input}
+              placeholder='Stock'
+              value={medicamentoForm.stock}
+              onChange={(e) =>
+                setMedicamentoForm({
+                  ...medicamentoForm,
+                  stock: e.target.value,
+                })
+              }
+            />
+
+            <input
+              style={styles.input}
+              placeholder='Precio unitario'
+              value={medicamentoForm.precio_unitario}
+              onChange={(e) =>
+                setMedicamentoForm({
+                  ...medicamentoForm,
+                  precio_unitario: e.target.value,
+                })
+              }
+            />
+
+            <button style={styles.button} onClick={crearMedicamento}>
+              Registrar
+            </button>
+          </div>
+
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Nombre</th>
+                <th style={styles.th}>Descripción</th>
+                <th style={styles.th}>Stock</th>
+                <th style={styles.th}>Precio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {medicamentos.map((m) => (
+                <tr key={m.id}>
+                  <td style={styles.td}>{m.nombre}</td>
+                  <td style={styles.td}>{m.descripcion}</td>
+                  <td style={styles.td}>{m.stock}</td>
+                  <td style={styles.td}>${m.precio_unitario}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'entradas' && (
+        <div style={styles.card}>
+          <h2>Entradas de stock</h2>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <select
+              style={styles.input}
+              value={entradaForm.medicamento_id}
+              onChange={(e) =>
+                setEntradaForm({
+                  ...entradaForm,
+                  medicamento_id: e.target.value,
+                })
+              }
+            >
+              <option value=''>Selecciona medicamento</option>
+              {medicamentos.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre}
+                </option>
+              ))}
+            </select>
+
+            <input
+              style={styles.input}
+              placeholder='Cantidad'
+              value={entradaForm.cantidad}
+              onChange={(e) =>
+                setEntradaForm({
+                  ...entradaForm,
+                  cantidad: e.target.value,
+                })
+              }
+            />
+
+            <input
+              style={styles.input}
+              placeholder='Motivo'
+              value={entradaForm.motivo}
+              onChange={(e) =>
+                setEntradaForm({
+                  ...entradaForm,
+                  motivo: e.target.value,
+                })
+              }
+            />
+
+            <button style={styles.button} onClick={registrarEntrada}>
+              Registrar entrada
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'aplicaciones' && (
+        <div style={styles.card}>
+          <h2>Aplicar medicamento</h2>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <select
+                style={styles.input}
+                value={aplicacionForm.animal_id}
+                onChange={(e) =>
+                    setAplicacionForm({
+                    ...aplicacionForm,
+                    animal_id: e.target.value,
+                    })
+                }
+                >
+                <option value=''>Selecciona animal</option>
+
+                {animales.map((animal) => (
+                    <option key={animal.id} value={animal.id}>
+                        {animal.identificador_unico} — {animal.estado} — {animal.etapa_actual || 'sin etapa'}
+                    </option>
+                ))}
+                </select>
+
+            <select
+              style={styles.input}
+              value={aplicacionForm.medicamento_id}
+              onChange={(e) =>
+                setAplicacionForm({
+                  ...aplicacionForm,
+                  medicamento_id: e.target.value,
+                })
+              }
+            >
+              <option value=''>Medicamento</option>
+              {medicamentos.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre}
+                </option>
+              ))}
+            </select>
+
+            <input
+              style={styles.input}
+              placeholder='Dosis'
+              value={aplicacionForm.dosis}
+              onChange={(e) =>
+                setAplicacionForm({
+                  ...aplicacionForm,
+                  dosis: e.target.value,
+                })
+              }
+            />
+
+            <input
+              type='date'
+              style={styles.input}
+              value={aplicacionForm.fecha}
+              onChange={(e) =>
+                setAplicacionForm({
+                  ...aplicacionForm,
+                  fecha: e.target.value,
+                })
+              }
+            />
+
+            <button style={styles.button} onClick={aplicarMedicamento}>
+              Aplicar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'movimientos' && (
+        <div style={styles.card}>
+          <h2>Movimientos</h2>
+
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Medicamento</th>
+                <th style={styles.th}>Tipo</th>
+                <th style={styles.th}>Cantidad</th>
+                <th style={styles.th}>Motivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movimientos.map((m) => (
+                <tr key={m.id}>
+                  <td style={styles.td}>{m.medicamento?.nombre}</td>
+                  <td style={styles.td}>{m.tipo}</td>
+                  <td style={styles.td}>{m.cantidad}</td>
+                  <td style={styles.td}>{m.motivo}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'alertas' && (
+        <div style={styles.card}>
+          <h2>Alertas de stock bajo</h2>
+
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Medicamento</th>
+                <th style={styles.th}>Stock</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alertas.map((a) => (
+                <tr key={a.id}>
+                  <td style={styles.td}>{a.nombre}</td>
+                  <td style={styles.td}>{a.stock}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -18,6 +18,8 @@ import Clientes from "./pages/Clientes";
 import Reportes from "./pages/Reportes";
 import Finanzas from "./pages/Finanzas";
 import Compras from "./pages/Compras";
+import Medicamentos from "./pages/Medicamentos";
+import EventosSanitarios from "./pages/EventosSanitarios";
 
 function App() {
   const [collapsed, setCollapsed] = useState(false);
@@ -53,6 +55,8 @@ function App() {
             <Route path="/reportes" element={<Reportes />} />
             <Route path="/finanzas" element={<Finanzas />} />
             <Route path="/compras" element={<Compras />} />
+            <Route path="/medicamentos" element={<Medicamentos />} />
+            <Route path="/sanidad" element={<EventosSanitarios />} />
           </Routes>
         </div>
       </div>
