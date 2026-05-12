@@ -2,30 +2,24 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Models\Animal;
 
 class AplicacionMedica extends Model
 {
-    public function animal(): BelongsTo
-    {
-        return $this->belongsTo(Animal::class);
-    }
-    protected $table = 'aplicaciones_medicas';
+    use HasFactory;
 
-    public $timestamps = false;
+    protected $table = 'aplicaciones_medicas';
 
     protected $fillable = [
         'animal_id',
-        'medicamento_id',
+        'medicamento',
         'dosis',
         'fecha',
-        'motivo'
     ];
 
-    public function medicamento()
+    public function animal()
     {
-        return $this->belongsTo(Medicamento::class);
+        return $this->belongsTo(Animal::class, 'animal_id');
     }
 }

@@ -55,15 +55,13 @@ Route::post('/alimentos/consumo-animal', [AlimentoController::class, 'consumoAni
 
 use App\Http\Controllers\MedicamentoController;
 
-// medicamentos
 Route::get('/medicamentos', [MedicamentoController::class, 'index']);
 Route::post('/medicamentos', [MedicamentoController::class, 'store']);
 Route::post('/medicamentos/{id}/entrada', [MedicamentoController::class, 'entrada']);
-
-// aplicaciones
 Route::post('/medicamentos/aplicar', [MedicamentoController::class, 'aplicar']);
-Route::get('/medicamentos/historial/{animal_id}', [MedicamentoController::class, 'historial']);
+Route::get('/medicamentos/historial/{animalId}', [MedicamentoController::class, 'historial']);
 Route::get('/medicamentos/alertas', [MedicamentoController::class, 'alertas']);
+Route::get('/medicamentos/movimientos', [MedicamentoController::class, 'movimientos']);
 
 Route::get('/dashboard/pesos', [DashboardController::class, 'pesosEvolucion']);
 Route::get('/dashboard/ventas', [DashboardController::class, 'ventasMensuales']);

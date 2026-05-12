@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class MovimientoMedicamento extends Model
 {
+    use HasFactory;
+
     protected $table = 'movimientos_medicamentos';
 
     protected $fillable = [
@@ -13,13 +16,11 @@ class MovimientoMedicamento extends Model
         'tipo',
         'cantidad',
         'motivo',
-        'usuario'
+        'usuario',
     ];
 
     public function medicamento()
     {
-        return $this->belongsTo(
-            Medicamento::class
-        );
+        return $this->belongsTo(Medicamento::class);
     }
 }
