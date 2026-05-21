@@ -8,6 +8,15 @@ class Inventario extends Model
 {
     protected $fillable = [
         'nombre_producto',
-        'stock_kg'
+        'stock_kg',
     ];
+
+    protected $casts = [
+        'stock_kg' => 'float',
+    ];
+
+    public function movimientos()
+    {
+        return $this->hasMany(MovimientoInventario::class, 'inventario_id');
+    }
 }

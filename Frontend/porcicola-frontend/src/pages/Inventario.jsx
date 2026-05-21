@@ -84,12 +84,17 @@ export default function Inventario() {
     const total = data.consumo_total || 0;
     const consumo = data.detalle || {};
 
+    const producto = inventario.find(item => item.id === productoSeleccionado);
+
     alert(
-      `Consumo aplicado: ${total.toFixed(2)} kg\n\n` +
-      "🐷 Consumo por etapa:\n" +
+      `Consumo aplicado al producto seleccionado: ${producto?.nombre_producto || "Producto"}\n\n` +
+      `Total descontado: ${total.toFixed(2)} kg\n\n` +
+      "🐷 Desglose usado para calcular el consumo por etapa:\n" +
       Object.entries(consumo)
         .map(([etapa, valor]) => `${etapa}: ${valor} kg`)
-        .join("\n")
+        .join("\n") +
+      "\n\nNota: este botón descuenta únicamente el producto seleccionado.\n" +
+      "La formulación por ingredientes se realizará en el módulo Alimentación."
     );
 
     cargarInventario();

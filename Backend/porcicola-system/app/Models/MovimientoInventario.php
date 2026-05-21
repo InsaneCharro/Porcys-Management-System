@@ -13,6 +13,17 @@ class MovimientoInventario extends Model
         'tipo',
         'cantidad',
         'tipo_origen',
-        'referencia_id'
+        'referencia_id',
+        'descripcion',
     ];
+
+    protected $casts = [
+        'cantidad' => 'float',
+        'referencia_id' => 'integer',
+    ];
+
+    public function inventario()
+    {
+        return $this->belongsTo(Inventario::class, 'inventario_id');
+    }
 }

@@ -63,6 +63,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         </li>
 
         <li>
+          <Link to="/alimentacion">
+            {collapsed ? "🌽" : "🌽 Alimentación"}
+          </Link>
+        </li>
+
+        <li>
           <Link to="/medicamentos">
             {collapsed ? "💊" : "💊 Medicamentos"}
           </Link>

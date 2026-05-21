@@ -1,86 +1,108 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use App\Models\Animal;
 use App\Models\Inventario;
 use App\Models\MovimientoInventario;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class InventarioController extends Controller
 {
     public function index()
     {
-        return Inventario::all();
+        return Inventario::orderBy('nombre_producto')->get();
     }
 
     public function entrada(Request $request)
     {
-        // 🔒 Validación
-        if (!$request->producto_id || !$request->cantidad) {
-            return response()->json(['error' => 'Datos incompletos'], 400);
-        }
-
-        $inventario = Inventario::find($request->producto_id);
-
-        if (!$inventario) {
-            return response()->json(['error' => 'Producto no encontrado'], 404);
-        }
-
-        // 🔢 Convertir a número
-        $cantidad = floatval($request->cantidad);
-
-        if ($cantidad <= 0) {
-            return response()->json(['error' => 'Cantidad inválida'], 400);
-        }
-
-        // ➕ SUMAR STOCK
-        $inventario->stock_kg += $cantidad;
-        $inventario->save();
-
-        return response()->json([
-            'mensaje' => 'Entrada registrada',
-            'stock_actual' => $inventario->stock_kg
+        $validated = $request->validate([
+            'producto_id' => 'required|exists:inventarios,id',
+            'cantidad' => 'required|numeric|min:0.1',
         ]);
+
+        $cantidad = (float) $validated['cantidad'];
+
+        return DB::transaction(function () use ($validated, $cantidad) {
+            $inventario = Inventario::lockForUpdate()->findOrFail($validated['producto_id']);
+
+            $inventario->stock_kg = round(((float) $inventario->stock_kg) + $cantidad, 2);
+            $inventario->save();
+
+            MovimientoInventario::create([
+                'inventario_id' => $inventario->id,
+                'tipo' => 'entrada',
+                'cantidad' => $cantidad,
+                'tipo_origen' => 'inventario',
+                'referencia_id' => $inventario->id,
+                'descripcion' => 'Entrada manual de inventario',
+            ]);
+
+            return response()->json([
+                'mensaje' => 'Entrada registrada correctamente',
+                'producto' => $inventario->nombre_producto,
+                'cantidad' => round($cantidad, 2),
+                'stock_actual' => round((float) $inventario->stock_kg, 2),
+            ]);
+        });
     }
 
     public function salida(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'producto_id' => 'required|exists:inventarios,id',
-            'cantidad' => 'required|numeric|min:0.1'
+            'cantidad' => 'required|numeric|min:0.1',
         ]);
 
-        $inv = Inventario::findOrFail($request->producto_id);
+        $cantidad = (float) $validated['cantidad'];
 
-        // VALIDAR STOCK
-        if ($inv->stock_kg < $request->cantidad) {
+        return DB::transaction(function () use ($validated, $cantidad) {
+            $inventario = Inventario::lockForUpdate()->findOrFail($validated['producto_id']);
+
+            if ((float) $inventario->stock_kg < $cantidad) {
+                return response()->json([
+                    'error' => 'Stock insuficiente',
+                    'producto' => $inventario->nombre_producto,
+                    'stock_actual' => round((float) $inventario->stock_kg, 2),
+                    'cantidad_solicitada' => round($cantidad, 2),
+                ], 400);
+            }
+
+            $inventario->stock_kg = round(((float) $inventario->stock_kg) - $cantidad, 2);
+            $inventario->save();
+
+            MovimientoInventario::create([
+                'inventario_id' => $inventario->id,
+                'tipo' => 'salida',
+                'cantidad' => $cantidad,
+                'tipo_origen' => 'inventario',
+                'referencia_id' => $inventario->id,
+                'descripcion' => 'Salida manual de inventario',
+            ]);
+
             return response()->json([
-                'error' => 'Stock insuficiente'
-            ], 400);
-        }
-
-        // RESTAR STOCK
-        $inv->stock_kg -= $request->cantidad;
-        $inv->save();
-
-        // REGISTRAR MOVIMIENTO
-        MovimientoInventario::create([
-            'producto_id' => $inv->id,
-            'tipo' => 'salida',
-            'cantidad_kg' => $request->cantidad,
-            'fecha' => now(),
-            'descripcion' => 'Consumo de alimento'
-        ]);
-
-        return response()->json([
-            'mensaje' => 'Salida registrada correctamente',
-            'stock_actual' => $inv->stock_kg
-        ]);
+                'mensaje' => 'Salida registrada correctamente',
+                'producto' => $inventario->nombre_producto,
+                'cantidad' => round($cantidad, 2),
+                'stock_actual' => round((float) $inventario->stock_kg, 2),
+            ]);
+        });
     }
 
-    public function consumoAutomatico()
+    public function consumoAutomatico(Request $request)
     {
+        $validated = $request->validate([
+            'producto_id' => 'required|exists:inventarios,id',
+        ]);
+
         $animales = Animal::where('estado', 'activo')->get();
+
+        if ($animales->isEmpty()) {
+            return response()->json([
+                'error' => 'No hay animales activos para calcular consumo',
+            ], 400);
+        }
 
         $consumoTotal = 0;
 
@@ -88,13 +110,16 @@ class InventarioController extends Controller
             'lechon' => 0,
             'crecimiento' => 0,
             'engorda' => 0,
-            'reproductor' => 0
+            'reproductor' => 0,
+            'otros' => 0,
         ];
 
         foreach ($animales as $animal) {
+            $etapa = strtolower(trim($animal->etapa_actual ?? ''));
 
-            switch ($animal->etapa_actual) {
+            switch ($etapa) {
                 case 'lechon':
+                case 'lechón':
                     $consumo = 0.8;
                     $detalle['lechon'] += $consumo;
                     break;
@@ -110,38 +135,61 @@ class InventarioController extends Controller
                     break;
 
                 case 'reproductor':
+                case 'reproductora':
+                case 'gestacion':
+                case 'gestación':
+                case 'lactancia':
                     $consumo = 3.0;
                     $detalle['reproductor'] += $consumo;
                     break;
 
                 default:
                     $consumo = 1.0;
+                    $detalle['otros'] += $consumo;
                     break;
             }
 
             $consumoTotal += $consumo;
         }
 
-        $inventario = Inventario::where('nombre_producto', 'like', '%alimento%')->first();
+        $consumoTotal = round($consumoTotal, 2);
 
-        if (!$inventario) {
-            return response()->json(['error' => 'No hay alimento en inventario'], 400);
-        }
+        return DB::transaction(function () use ($validated, $consumoTotal, $detalle, $animales) {
+            $inventario = Inventario::lockForUpdate()->findOrFail($validated['producto_id']);
 
-        if ($inventario->stock_kg < $consumoTotal) {
+            if ((float) $inventario->stock_kg < $consumoTotal) {
+                return response()->json([
+                    'error' => 'Stock insuficiente para consumo automático',
+                    'producto' => $inventario->nombre_producto,
+                    'stock_actual' => round((float) $inventario->stock_kg, 2),
+                    'consumo_requerido' => $consumoTotal,
+                    'faltante' => round($consumoTotal - (float) $inventario->stock_kg, 2),
+                    'detalle' => $detalle,
+                ], 400);
+            }
+
+            $inventario->stock_kg = round(((float) $inventario->stock_kg) - $consumoTotal, 2);
+            $inventario->save();
+
+            MovimientoInventario::create([
+                'inventario_id' => $inventario->id,
+                'tipo' => 'consumo',
+                'cantidad' => $consumoTotal,
+                'tipo_origen' => 'consumo_automatico_animales',
+                'referencia_id' => null,
+                'descripcion' => 'Consumo automático calculado por etapa de animales activos',
+            ]);
+
             return response()->json([
-                'error' => 'Stock insuficiente para consumo automático'
-            ], 400);
-        }
-
-        $inventario->stock_kg -= $consumoTotal;
-        $inventario->save();
-
-        return response()->json([
-            'mensaje' => 'Consumo aplicado',
-            'consumo_total' => round($consumoTotal, 2),
-            'stock_restante' => $inventario->stock_kg,
-            'detalle' => $detalle
-        ]);
+                'mensaje' => 'Consumo aplicado correctamente',
+                'producto' => $inventario->nombre_producto,
+                'animales_procesados' => $animales->count(),
+                'consumo_total' => $consumoTotal,
+                'stock_restante' => round((float) $inventario->stock_kg, 2),
+                'detalle' => array_map(function ($valor) {
+                    return round($valor, 2);
+                }, $detalle),
+            ]);
+        });
     }
 }

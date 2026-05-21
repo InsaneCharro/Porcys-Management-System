@@ -74,6 +74,7 @@ Route::get('/pesos/{animal_id}', [PesoController::class, 'porAnimal']);
 Route::get('/dashboard/alertas', [DashboardController::class, 'animalesBajoCrecimiento']);
 
 use App\Http\Controllers\InventarioController;
+use App\Http\Controllers\AlimentacionController;
 
 Route::get('/inventario', [InventarioController::class, 'index']);
 Route::post('/inventario/entrada', [InventarioController::class, 'entrada']);
@@ -219,3 +220,21 @@ Route::get('/sanidad', [EventoSanitarioController::class, 'index']);
 Route::post('/sanidad', [EventoSanitarioController::class, 'store']);
 Route::get('/sanidad/historial/{animalId}', [EventoSanitarioController::class, 'historial']);
 Route::get('/sanidad/alertas', [EventoSanitarioController::class, 'alertas']);
+
+/*
+|--------------------------------------------------------------------------
+| ALIMENTACIÓN / NUTRICIÓN
+|--------------------------------------------------------------------------
+*/
+Route::get('/alimentacion/dietas', [AlimentacionController::class, 'dietas']);
+Route::post('/alimentacion/dietas', [AlimentacionController::class, 'guardarDieta']);
+Route::put('/alimentacion/dietas/{id}', [AlimentacionController::class, 'actualizarDieta']);
+Route::delete('/alimentacion/dietas/{id}', [AlimentacionController::class, 'eliminarDieta']);
+
+Route::post('/alimentacion/dietas/{id}/ingredientes', [AlimentacionController::class, 'guardarIngrediente']);
+Route::delete('/alimentacion/ingredientes/{id}', [AlimentacionController::class, 'eliminarIngrediente']);
+
+Route::get('/alimentacion/consumos', [AlimentacionController::class, 'consumos']);
+Route::post('/alimentacion/consumos', [AlimentacionController::class, 'registrarConsumo']);
+Route::get('/alimentacion/alertas', [AlimentacionController::class, 'alertas']);
+
