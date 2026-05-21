@@ -8,23 +8,33 @@ use Carbon\Carbon;
 class Gestacion extends Model
 {
     protected $table = 'gestaciones';
-    public $timestamps = false;
+
     protected $fillable = [
+        'animal_id',
         'hembra_id',
+        'fecha_servicio',
         'fecha_inicio',
         'fecha_probable_parto',
         'fecha_parto_real',
+        'tipo_servicio',
         'estado',
-        'cantidad_crias'
+        'resultado',
+        'fecha_fin',
+        'cantidad_crias',
+        'intentos',
+        'notas',
     ];
 
-    // 🔗 Relación con Animal
     public function animal()
     {
         return $this->belongsTo(Animal::class, 'hembra_id');
     }
 
-    // 🔗 Relación con Parto
+    public function hembra()
+    {
+        return $this->belongsTo(Animal::class, 'hembra_id');
+    }
+
     public function parto()
     {
         return $this->hasOne(Parto::class, 'gestacion_id');
@@ -35,15 +45,13 @@ class Gestacion extends Model
         return $this->hasOne(Camada::class);
     }
 
-    // 🧠 Lógica: calcular fecha de parto
-    public function calcularFechaParto()
+    public function serviciosReproductivos()
     {
-        // 3 meses 22 días ≈ 114 días
-        return Carbon::parse($this->fecha_inicio)->addDays(114);
+        return $this->hasMany(ServicioReproductivo::class, 'gestacion_id');
     }
 
-    public function hembra()
+    public function calcularFechaParto()
     {
-        return $this->belongsTo(Animal::class, 'hembra_id');
+        return Carbon::parse($this->fecha_inicio)->addDays(114);
     }
 }

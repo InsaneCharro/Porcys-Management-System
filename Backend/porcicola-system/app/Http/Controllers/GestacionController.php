@@ -13,7 +13,7 @@ class GestacionController extends Controller
 {
     public function index()
     {
-        return Gestacion::with('animal')
+        return Gestacion::with(['animal', 'serviciosReproductivos'])
             ->orderByDesc('id')
             ->get();
     }
@@ -44,18 +44,21 @@ class GestacionController extends Controller
             ], 400);
         }
 
+        $fechaInicio = Carbon::parse($request->fecha_inicio);
+
         $gestacion = Gestacion::create([
             'animal_id' => $request->animal_id,
             'hembra_id' => $request->animal_id,
+            'fecha_servicio' => $fechaInicio->toDateString(),
             'tipo_servicio' => $request->tipo_servicio ?? 'natural',
-            'fecha_inicio' => $request->fecha_inicio,
-            'fecha_probable_parto' => Carbon::parse($request->fecha_inicio)->addDays(114),
+            'fecha_inicio' => $fechaInicio->toDateString(),
+            'fecha_probable_parto' => $fechaInicio->copy()->addDays(114)->toDateString(),
             'estado' => 'activa',
             'resultado' => null,
             'intentos' => 1,
         ]);
 
-        return response()->json($gestacion, 201);
+        return response()->json($gestacion->load('animal'), 201);
     }
 
     public function confirmar($id)
@@ -72,7 +75,7 @@ class GestacionController extends Controller
         $gestacion->resultado = 'preñada';
         $gestacion->save();
 
-        return response()->json($gestacion);
+        return response()->json($gestacion->load('animal'));
     }
 
     public function marcarFallida($id)
@@ -90,7 +93,7 @@ class GestacionController extends Controller
         $gestacion->fecha_fin = now();
         $gestacion->save();
 
-        return response()->json($gestacion);
+        return response()->json($gestacion->load('animal'));
     }
 
     public function registrarParto(Request $request, $id)
@@ -187,7 +190,9 @@ class GestacionController extends Controller
         $hoy = now();
 
         foreach ($gestaciones as $g) {
-            if (!$g->fecha_probable_parto) continue;
+            if (!$g->fecha_probable_parto) {
+                continue;
+            }
 
             $diasRestantes = $hoy->diffInDays($g->fecha_probable_parto, false);
 
@@ -214,6 +219,21 @@ class GestacionController extends Controller
         return response()->json([
             'total_alertas' => count($alertas),
             'alertas' => $alertas
+        ]);
+    }
+
+    public function procesarPartosAutomaticos()
+    {
+        $gestaciones = Gestacion::where('estado', 'confirmada')
+            ->whereNotNull('fecha_probable_parto')
+            ->whereDate('fecha_probable_parto', '<=', now()->toDateString())
+            ->whereNull('fecha_parto_real')
+            ->get();
+
+        return response()->json([
+            'mensaje' => 'Proceso automático revisado correctamente',
+            'gestaciones_pendientes_de_parto' => $gestaciones->count(),
+            'nota' => 'El registro real de parto requiere machos, hembras, muertos y pesos, por eso no se generan lechones sin esos datos.'
         ]);
     }
 

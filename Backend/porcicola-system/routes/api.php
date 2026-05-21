@@ -238,3 +238,16 @@ Route::get('/alimentacion/consumos', [AlimentacionController::class, 'consumos']
 Route::post('/alimentacion/consumos', [AlimentacionController::class, 'registrarConsumo']);
 Route::get('/alimentacion/alertas', [AlimentacionController::class, 'alertas']);
 
+/*
+|--------------------------------------------------------------------------
+| REPRODUCCIÓN AVANZADA / SERVICIOS REPRODUCTIVOS
+|--------------------------------------------------------------------------
+*/
+use App\Http\Controllers\ServicioReproductivoController;
+
+Route::get('/servicios-reproductivos', [ServicioReproductivoController::class, 'index']);
+Route::post('/servicios-reproductivos', [ServicioReproductivoController::class, 'store']);
+Route::put('/servicios-reproductivos/{id}/resultado', [ServicioReproductivoController::class, 'actualizarResultado']);
+Route::get('/servicios-reproductivos/historial/{hembraId}', [ServicioReproductivoController::class, 'historialPorHembra']);
+Route::get('/servicios-reproductivos/indicadores/resumen', [ServicioReproductivoController::class, 'indicadores']);
+
