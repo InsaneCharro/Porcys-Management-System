@@ -83,37 +83,56 @@ class DashboardController extends Controller
                 'muertos' => 0,
                 'descartados' => 0,
                 'bajas' => 0,
+                'vendidos' => 0,
                 'lechones_vivos' => 0,
                 'lechones_hoy' => 0,
                 'por_etapa' => [],
                 'por_sexo' => [],
+                'por_estado' => [],
             ];
         }
 
         $total = DB::table('animales')->count();
 
         $muertos = $this->hasColumn('animales', 'estado')
-            ? DB::table('animales')->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%muert%'])->count()
+            ? DB::table('animales')
+                ->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%muert%'])
+                ->count()
             : 0;
 
         $descartados = $this->hasColumn('animales', 'estado')
-            ? DB::table('animales')->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%descart%'])->count()
+            ? DB::table('animales')
+                ->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%descart%'])
+                ->count()
             : 0;
 
         $bajas = $this->hasColumn('animales', 'estado')
-            ? DB::table('animales')->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%baja%'])->count()
+            ? DB::table('animales')
+                ->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%baja%'])
+                ->count()
             : 0;
 
-        $activos = $this->hasColumn('animales', 'estado')
+        $vendidos = $this->hasColumn('animales', 'estado')
             ? DB::table('animales')
+                ->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%vendid%'])
+                ->count()
+            : 0;
+
+        if ($this->hasColumn('animales', 'estado')) {
+            $activosQuery = DB::table('animales')
                 ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
                 ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
                 ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%'])
-                ->count()
-            : $total;
+                ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%vendid%'])
+                ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%sacrific%']);
+        } else {
+            $activosQuery = DB::table('animales');
+        }
+
+        $activos = (clone $activosQuery)->count();
 
         $porEtapa = $this->hasColumn('animales', 'etapa_actual')
-            ? DB::table('animales')
+            ? (clone $activosQuery)
                 ->selectRaw("COALESCE(etapa_actual, 'Sin etapa') as etapa_actual, COUNT(*) as total")
                 ->groupBy('etapa_actual')
                 ->orderByDesc('total')
@@ -121,32 +140,56 @@ class DashboardController extends Controller
             : collect();
 
         $porSexo = $this->hasColumn('animales', 'sexo')
-            ? DB::table('animales')
+            ? (clone $activosQuery)
                 ->selectRaw("COALESCE(sexo, 'Sin sexo') as sexo, COUNT(*) as total")
                 ->groupBy('sexo')
                 ->orderByDesc('total')
                 ->get()
             : collect();
 
+        $porEstado = $this->hasColumn('animales', 'estado')
+            ? DB::table('animales')
+                ->selectRaw("COALESCE(estado, 'Sin estado') as estado, COUNT(*) as total")
+                ->groupBy('estado')
+                ->orderByDesc('total')
+                ->get()
+            : collect();
+
         $lechonesVivos = 0;
+
         if ($this->hasColumn('animales', 'etapa_actual')) {
-            $query = DB::table('animales')->where('etapa_actual', 'lechon');
+            $lechonesQuery = DB::table('animales')
+                ->whereIn('etapa_actual', ['lechon', 'lechón']);
 
             if ($this->hasColumn('animales', 'estado')) {
-                $query->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
+                $lechonesQuery
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
                     ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
-                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%']);
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%'])
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%vendid%'])
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%sacrific%']);
             }
 
-            $lechonesVivos = $query->count();
+            $lechonesVivos = $lechonesQuery->count();
         }
 
         $lechonesHoy = 0;
+
         if ($this->hasColumn('animales', 'created_at') && $this->hasColumn('animales', 'etapa_actual')) {
-            $lechonesHoy = DB::table('animales')
+            $lechonesHoyQuery = DB::table('animales')
                 ->whereDate('created_at', now()->toDateString())
-                ->where('etapa_actual', 'lechon')
-                ->count();
+                ->whereIn('etapa_actual', ['lechon', 'lechón']);
+
+            if ($this->hasColumn('animales', 'estado')) {
+                $lechonesHoyQuery
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%'])
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%vendid%'])
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%sacrific%']);
+            }
+
+            $lechonesHoy = $lechonesHoyQuery->count();
         }
 
         return [
@@ -155,10 +198,12 @@ class DashboardController extends Controller
             'muertos' => $muertos,
             'descartados' => $descartados,
             'bajas' => $bajas,
+            'vendidos' => $vendidos,
             'lechones_vivos' => $lechonesVivos,
             'lechones_hoy' => $lechonesHoy,
             'por_etapa' => $porEtapa,
             'por_sexo' => $porSexo,
+            'por_estado' => $porEstado,
         ];
     }
 
@@ -293,16 +338,20 @@ class DashboardController extends Controller
                 'ocupados' => 0,
                 'espacios_disponibles' => 0,
                 'corrales_saturados' => 0,
+                'corrales_en_riesgo' => 0,
                 'corrales' => [],
+                'por_tipo' => [],
                 'alertas' => [],
             ];
         }
 
         $corralesBase = DB::table('corrales')->get();
+
         $corrales = collect();
         $capacidadTotal = 0;
         $ocupadosTotal = 0;
         $saturados = 0;
+        $enRiesgo = 0;
         $alertas = [];
 
         foreach ($corralesBase as $corral) {
@@ -310,33 +359,56 @@ class DashboardController extends Controller
                 ? (int) $corral->capacidad
                 : 0;
 
+            $tipoCorral = $this->hasColumn('corrales', 'tipo_corral')
+                ? ($corral->tipo_corral ?? 'general')
+                : 'general';
+
             $ocupados = 0;
 
             if (Schema::hasTable('animales') && $this->hasColumn('animales', 'corral_id')) {
-                $ocupadosQuery = DB::table('animales')->where('corral_id', $corral->id);
+                $ocupadosQuery = DB::table('animales')
+                    ->where('corral_id', $corral->id);
 
                 if ($this->hasColumn('animales', 'estado')) {
-                    $ocupadosQuery->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
+                    $ocupadosQuery
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
                         ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
-                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%']);
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%'])
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%vendid%'])
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%sacrific%']);
                 }
 
                 $ocupados = $ocupadosQuery->count();
-            } elseif (Schema::hasTable('lechones') && $this->hasColumn('lechones', 'corral_id')) {
-                $ocupados = DB::table('lechones')->where('corral_id', $corral->id)->count();
             }
 
             $ocupacion = $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 1) : 0;
             $disponibles = max($capacidad - $ocupados, 0);
-            $saturado = $capacidad > 0 && $ocupacion >= 90;
+
+            $saturado = $capacidad > 0 && $ocupacion >= 100;
+            $riesgo = $capacidad > 0 && $ocupacion >= 85 && $ocupacion < 100;
+
+            $estadoOcupacion = 'disponible';
 
             if ($saturado) {
+                $estadoOcupacion = 'lleno';
                 $saturados++;
+
                 $alertas[] = [
                     'tipo' => 'corral_saturado',
                     'nivel' => 'critica',
-                    'mensaje' => 'Corral saturado: ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' con ' . $ocupacion . '% de ocupación.',
+                    'mensaje' => 'Corral lleno: ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' (' . $tipoCorral . ') con ' . $ocupacion . '% de ocupación.',
                 ];
+            } elseif ($riesgo) {
+                $estadoOcupacion = 'casi_lleno';
+                $enRiesgo++;
+
+                $alertas[] = [
+                    'tipo' => 'corral_casi_lleno',
+                    'nivel' => 'advertencia',
+                    'mensaje' => 'Corral casi lleno: ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' (' . $tipoCorral . ') con ' . $ocupacion . '% de ocupación.',
+                ];
+            } elseif ($ocupacion >= 60) {
+                $estadoOcupacion = 'ocupacion_media';
             }
 
             $capacidadTotal += $capacidad;
@@ -346,12 +418,33 @@ class DashboardController extends Controller
                 'id' => $corral->id,
                 'nombre' => $corral->nombre ?? ('Corral #' . $corral->id),
                 'capacidad' => $capacidad,
+                'tipo_corral' => $tipoCorral,
                 'ocupados' => $ocupados,
                 'disponibles' => $disponibles,
                 'ocupacion' => $ocupacion,
+                'porcentaje_ocupacion' => $ocupacion,
+                'estado_ocupacion' => $estadoOcupacion,
                 'saturado' => $saturado,
+                'en_riesgo' => $riesgo,
             ]);
         }
+
+        $porTipo = $corrales
+            ->groupBy('tipo_corral')
+            ->map(function ($grupo, $tipo) {
+                $capacidad = $grupo->sum('capacidad');
+                $ocupados = $grupo->sum('ocupados');
+
+                return [
+                    'tipo_corral' => $tipo,
+                    'corrales' => $grupo->count(),
+                    'capacidad' => $capacidad,
+                    'ocupados' => $ocupados,
+                    'disponibles' => max($capacidad - $ocupados, 0),
+                    'porcentaje_ocupacion' => $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 1) : 0,
+                ];
+            })
+            ->values();
 
         return [
             'total' => $corralesBase->count(),
@@ -359,7 +452,9 @@ class DashboardController extends Controller
             'ocupados' => $ocupadosTotal,
             'espacios_disponibles' => max($capacidadTotal - $ocupadosTotal, 0),
             'corrales_saturados' => $saturados,
+            'corrales_en_riesgo' => $enRiesgo,
             'corrales' => $corrales,
+            'por_tipo' => $porTipo,
             'alertas' => $alertas,
         ];
     }

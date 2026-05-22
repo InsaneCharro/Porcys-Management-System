@@ -17,6 +17,7 @@ use App\Http\Controllers\PesoController;
 Route::post('/pesos', [PesoController::class, 'store']);
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\CorralController;
 
 Route::get('/dashboard', [DashboardController::class, 'resumen']);
 
@@ -83,85 +84,28 @@ Route::post('/inventario/consumo', [InventarioController::class, 'consumoAutomat
 Route::get('/gestaciones/alertas-inteligentes', [GestacionController::class, 'alertasInteligentes']);
 Route::post('/gestaciones/partos', [GestacionController::class, 'procesarPartosAutomaticos']);
 
-use App\Models\Corral;
+
 use App\Models\Animal;
 use App\Models\Lechon;
-
+use App\Models\Corral;
 /*
 |--------------------------------------------------------------------------
-| CORRALES
+| CORRALES / OCUPACIÓN / ROTACIÓN
 |--------------------------------------------------------------------------
 */
 
-// 🔹 Obtener todos los corrales
-Route::get('/corrales', function () {
-    return \App\Models\Corral::withCount('lechones')
-        ->with('lechones')
-        ->get()
-        ->map(function ($corral) {
-            return [
-                'id' => $corral->id,
-                'nombre' => $corral->nombre,
-                'capacidad' => $corral->capacidad,
-                'lechones_count' => $corral->lechones_count,
+Route::get('/corrales', [CorralController::class, 'index']);
+Route::get('/corrales/resumen', [CorralController::class, 'resumen']);
+Route::get('/corrales/{id}', [CorralController::class, 'show']);
 
-                // 🔥 CORRECCIÓN REAL
-                'animales' => $corral->lechones->map(function ($a) {
-                    return [
-                        'id' => $a->id, // ✅ ID REAL DE BD
-                        'identificador_unico' => $a->identificador_unico,
-                        'corral_id' => $a->corral_id,
-                    ];
-                }),
-            ];
-        });
-});
+Route::post('/corrales', [CorralController::class, 'store']);
+Route::put('/corrales/{id}', [CorralController::class, 'update']);
+Route::delete('/corrales/{id}', [CorralController::class, 'destroy']);
 
-// 🔹 Obtener detalle de un corral
-Route::get('/corrales/{id}', function ($id) {
-    return Corral::withCount('lechones')
-        ->with('lechones')
-        ->findOrFail($id);
-});
+Route::post('/animales/{id}/asignar-corral', [CorralController::class, 'asignarAnimal']);
+Route::post('/animales/{id}/mover-corral', [CorralController::class, 'moverAnimal']);
+Route::post('/animales/{id}/retirar-corral', [CorralController::class, 'retirarAnimal']);
 
-// 🔹 Crear corral
-Route::post('/corrales', function (Request $request) {
-
-    $validated = $request->validate([
-        'nombre' => 'required|string',
-        'capacidad' => 'required|integer'
-    ]);
-
-    return Corral::create($validated);
-});
-
-// 🔹 Mover lechón de corral (ESTABLE)
-Route::post('/animales/{id}/mover-corral', function ($id, Request $request) {
-
-    // 🔒 VALIDACIÓN
-    $request->validate([
-        'corral_id' => 'required|exists:corrales,id'
-    ]);
-
-    $animal = Lechon::findOrFail($id);
-
-    $nuevoCorral = Corral::withCount('lechones')->findOrFail($request->corral_id);
-
-    // 🚫 evitar sobrecupo
-    if ($nuevoCorral->lechones_count >= $nuevoCorral->capacidad) {
-        return response()->json([
-            'error' => 'Corral lleno'
-        ], 400);
-    }
-
-    // 🔄 mover
-    $animal->corral_id = $nuevoCorral->id;
-    $animal->save();
-
-    return response()->json([
-        'success' => true
-    ]);
-});
 use App\Http\Controllers\MovimientoController;
 Route::get('/movimientos', [MovimientoController::class, 'index']);
 Route::post('/movimientos', [MovimientoController::class, 'store']);

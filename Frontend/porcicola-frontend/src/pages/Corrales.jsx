@@ -1,623 +1,615 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { useRef } from "react";
+import { Link } from "react-router-dom";
+
+const API = "http://127.0.0.1:8000/api";
 
 export default function Corrales() {
   const [corrales, setCorrales] = useState([]);
-  const [animalSeleccionado, setAnimalSeleccionado] = useState(null);
-  const [draggedAnimal, setDraggedAnimal] = useState(null); // 👈 AQUÍ
+  const [resumen, setResumen] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [mensaje, setMensaje] = useState("");
+  const [draggedAnimal, setDraggedAnimal] = useState(null);
   const [corralHover, setCorralHover] = useState(null);
-  const [animacion, setAnimacion] = useState(null);
-  const [ruta, setRuta] = useState(null);
-  const [historial, setHistorial] = useState([]);
 
-  const cargarHistorial = async () => {
-    try {
-      const res = await axios.get("http://127.0.0.1:8000/api/movimientos");
-
-      console.log("MOVIMIENTOS RAW:", res.data);
-
-      const formateado = res.data.map(m => ({
-        id: m.id,
-        animal: m.animal?.identificador_unico || "SIN_ID",
-        from: m.corral_origen?.nombre || "Sin origen",
-        to: m.corral_destino?.nombre || "Sin destino",
-        time: m.created_at, // 🔥 IMPORTANTE
-        nuevo: false
-      }));
-
-      console.log("FORMATEADO:", formateado);
-
-      setHistorial(formateado);
-
-    } catch (err) {
-      console.error("Error cargando historial:", err);
-    }
-  };
+  const [nuevoCorral, setNuevoCorral] = useState({
+    nombre: "",
+    capacidad: "",
+    tipo_corral: "general",
+  });
 
   useEffect(() => {
-    cargarCorrales();
+    cargarDatos();
   }, []);
 
-  
+  const tiposCorral = [
+    { value: "maternidad", label: "Maternidad", icon: "🍼" },
+    { value: "gestacion", label: "Gestación", icon: "🤰" },
+    { value: "reproduccion", label: "Reproducción", icon: "🐗" },
+    { value: "engorda", label: "Engorda", icon: "🍖" },
+    { value: "destete", label: "Destete", icon: "🐖" },
+    { value: "enfermeria", label: "Enfermería", icon: "💊" },
+    { value: "cuarentena", label: "Cuarentena", icon: "🧪" },
+    { value: "sementales", label: "Sementales", icon: "🐗" },
+    { value: "general", label: "General", icon: "📦" },
+  ];
 
-  useEffect(() => {
-  cargarHistorial();
-}, []);
+  const normalizarTexto = (valor) => {
+    return String(valor ?? "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[_-]/g, " ")
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  };
 
-  useEffect(() => {
-    console.log("🔥 HISTORIAL CAMBIÓ:", historial);
-  }, [historial]);
+  const etiquetaTipoCorral = (tipo) => {
+    const normalizado = normalizarTexto(tipo);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setHistorial(prev => [...prev]); // 🔥 fuerza re-render
-    }, 5000);
+    const encontrado = tiposCorral.find(
+      (item) => normalizarTexto(item.value) === normalizado
+    );
 
-    return () => clearInterval(interval);
-  }, []);
+    return encontrado ? `${encontrado.icon} ${encontrado.label}` : "📦 General";
+  };
 
-  const corralesRef = useRef({});
+  const cargarDatos = async () => {
+    setLoading(true);
+    setMensaje("");
 
-  const cargarCorrales = async () => {
     try {
-      const res = await axios.get("http://127.0.0.1:8000/api/corrales");
-      setCorrales(res.data);
-    } catch (err) {
-      console.error(err);
+      const [corralesRes, resumenRes] = await Promise.all([
+        axios.get(`${API}/corrales`),
+        axios.get(`${API}/corrales/resumen`),
+      ]);
+
+      setCorrales(corralesRes.data || []);
+      setResumen(resumenRes.data || null);
+    } catch (error) {
+      console.error(error.response?.data || error);
+      alert("Error cargando corrales.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // 🔥 Estado inteligente
-  const getEstado = (ocupados, capacidad) => {
-    if (!capacidad) return { color: "#555", label: "SIN CAPACIDAD" };
+  const corralesPorTipo = useMemo(() => {
+    return corrales.reduce((acc, corral) => {
+      const tipo = corral.tipo_corral || "general";
 
-    const porcentaje = (ocupados / capacidad) * 100;
+      if (!acc[tipo]) {
+        acc[tipo] = [];
+      }
 
-    if (ocupados === 0) return { color: "#777", label: "VACÍO" };
-    if (porcentaje >= 100) return { color: "red", label: "LLENO" };
-    if (porcentaje >= 80) return { color: "orange", label: "CASI LLENO" };
-    return { color: "lime", label: "DISPONIBLE" };
+      acc[tipo].push(corral);
+      return acc;
+    }, {});
+  }, [corrales]);
+
+  const obtenerEstadoVisual = (corral) => {
+    const estado = corral.estado_ocupacion;
+
+    if (estado === "lleno") {
+      return {
+        label: "Lleno",
+        bg: "#fee2e2",
+        border: "#dc2626",
+        text: "#991b1b",
+      };
+    }
+
+    if (estado === "casi_lleno") {
+      return {
+        label: "Casi lleno",
+        bg: "#ffedd5",
+        border: "#f97316",
+        text: "#9a3412",
+      };
+    }
+
+    if (estado === "ocupacion_media") {
+      return {
+        label: "Ocupación media",
+        bg: "#fef9c3",
+        border: "#eab308",
+        text: "#854d0e",
+      };
+    }
+
+    return {
+      label: "Disponible",
+      bg: "#dcfce7",
+      border: "#16a34a",
+      text: "#166534",
+    };
   };
 
-  // 🔥 Mover animal
-  const moverAnimal = async (animalId, corralId) => {
+  const crearCorral = async () => {
+    if (!nuevoCorral.nombre.trim()) {
+      alert("El nombre del corral es obligatorio.");
+      return;
+    }
+
+    if (!nuevoCorral.capacidad || Number(nuevoCorral.capacidad) <= 0) {
+      alert("La capacidad debe ser mayor a 0.");
+      return;
+    }
+
     try {
-      await axios.post(
-        `http://127.0.0.1:8000/api/animales/${animalId}/mover-corral`,
-        { corral_id: corralId },
-        {
-          headers: {
-            Accept: "application/json",
-          },
-        },
-      );
+      await axios.post(`${API}/corrales`, {
+        nombre: nuevoCorral.nombre.trim(),
+        capacidad: Number(nuevoCorral.capacidad),
+        tipo_corral: nuevoCorral.tipo_corral,
+      });
 
-      alert("✅ Animal movido");
+      setNuevoCorral({
+        nombre: "",
+        capacidad: "",
+        tipo_corral: "general",
+      });
 
-      setAnimalSeleccionado(null);
-      cargarCorrales();
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.error || "Error al mover");
+      setMensaje("Corral creado correctamente.");
+      cargarDatos();
+    } catch (error) {
+      console.error(error.response?.data || error);
+      alert(error.response?.data?.error || error.response?.data?.message || "Error creando corral.");
     }
   };
 
-  const handleDragStart = (animal, corral) => {
+  const eliminarCorral = async (corral) => {
+    if (!window.confirm(`¿Eliminar ${corral.nombre}? Solo se permite si está vacío.`)) {
+      return;
+    }
+
+    try {
+      await axios.delete(`${API}/corrales/${corral.id}`);
+      setMensaje("Corral eliminado correctamente.");
+      cargarDatos();
+    } catch (error) {
+      console.error(error.response?.data || error);
+      alert(error.response?.data?.error || "Error eliminando corral.");
+    }
+  };
+
+  const iniciarArrastre = (animal, corral) => {
     setDraggedAnimal({
       ...animal,
-      corralOrigenId: corral.id
+      corral_origen_id: corral.id,
+      corral_origen_nombre: corral.nombre,
     });
   };
 
-  const handleDragOver = (e) => {
-    e.preventDefault(); // necesario para permitir drop
-  };
-  
- 
-
-  const handleDrop = async (corral) => {
-    if (!draggedAnimal) return;
-
-    // 🔥 Obtener el animal REAL desde el estado global
-    const animalReal = corrales
-      .flatMap(c => c.animales || [])
-      .find(a => a.identificador_unico === draggedAnimal.identificador_unico);
-    const animalDB = corrales
-      .flatMap(c => c.animales || [])
-      .find(a => a.identificador_unico === animalReal.identificador_unico);    
-    if (!animalReal) {
-      console.error("❌ Animal no encontrado en corrales");
+  const moverAnimal = async (corralDestino) => {
+    if (!draggedAnimal) {
       return;
     }
 
-    const origenCorral = corrales.find(c => c.id === animalReal.corral_id);
-
-    // 🔴 REGLAS
-    if (animalReal.estado === "muerto") {
-      alert("❌ No puedes mover un animal muerto");
-      return;
-    }
-
-    if (animalReal.estado === "descartado") {
-      alert("❌ Animal descartado");
-      return;
-    }
-
-    if (corral.lechones_count >= corral.capacidad) {
-      alert("⚠️ Corral lleno");
-      return;
-    }
-
-    // 🔥 ELEMENTOS DOM
-    const origenEl = corralesRef.current[animalReal.corral_id];
-    const destinoEl = corralesRef.current[corral.id];
-
-    if (origenEl && destinoEl) {
-      const from = getCenter(origenEl);
-      const to = getCenter(destinoEl);
-
-      setRuta({ from, to });
-
-      setAnimacion({
-        id: animalReal.id,
-        from,
-        to
-      });
-    }
-
-    // 🔥 VALIDACIÓN DE ZONAS
-    const esMaternidad = zonas.maternidad.includes(corral.nombre);
-    const esEngorda = zonas.engorda.includes(corral.nombre);
-
-    const origenZona = zonas.maternidad.includes(origenCorral?.nombre)
-      ? "maternidad"
-      : "engorda";
-
-    if (origenZona === "maternidad" && esEngorda) {
-      alert("⚠️ No puedes mover directo de maternidad a engorda");
+    if (Number(draggedAnimal.corral_origen_id) === Number(corralDestino.id)) {
+      setDraggedAnimal(null);
+      setCorralHover(null);
       return;
     }
 
     try {
-      const origenNombre = origenCorral?.nombre || "Desconocido";
-      const destinoNombre = corral.nombre;
+      await axios.post(`${API}/animales/${draggedAnimal.id}/mover-corral`, {
+        corral_id: corralDestino.id,
+      });
 
-      // 🔄 MOVER EN BACKEND (usar ID REAL)
-      await moverAnimal(animalReal.id, corral.id);
-
-      // 🔥 GUARDAR HISTORIAL
       try {
-        console.log("ANIMAL REAL:", animalReal);
-        console.log("ANIMAL DB:", animalDB);
-        console.log("ID QUE ENVÍAS:", animalDB?.id);
-
-        await axios.post("http://127.0.0.1:8000/api/movimientos", {
-          animal_id: animalDB?.id, // ✅ ID REAL
-          corral_origen_id: origenCorral?.id,
-          corral_destino_id: corral.id
+        await axios.post(`${API}/movimientos`, {
+          animal_id: draggedAnimal.id,
+          corral_origen_id: draggedAnimal.corral_origen_id,
+          corral_destino_id: corralDestino.id,
         });
-
-      } catch (err) {
-        console.error("❌ ERROR GUARDANDO HISTORIAL:", err);
-        console.log("RESPUESTA BACKEND:", err.response?.data);
-        console.log("ANIMAL KEYS:", Object.keys(animalReal));
+      } catch (errorHistorial) {
+        console.warn("Movimiento registrado en corral, pero no se pudo guardar historial:", errorHistorial.response?.data || errorHistorial);
       }
 
-      // 🔄 RECARGAR HISTORIAL
-      await cargarHistorial();
+      setMensaje(
+        `${draggedAnimal.identificador_unico} movido de ${draggedAnimal.corral_origen_nombre} a ${corralDestino.nombre}.`
+      );
 
-      // 🔄 RECARGAR CORRALES
-      const res = await axios.get("http://127.0.0.1:8000/api/corrales");
-      setCorrales(res.data);
-
-    } catch (err) {
-      console.error("❌ ERROR COMPLETO:", err);
-      alert("Error al mover animal");
+      await cargarDatos();
+    } catch (error) {
+      console.error(error.response?.data || error);
+      alert(error.response?.data?.error || "Error moviendo animal.");
     } finally {
       setDraggedAnimal(null);
-
-      setTimeout(() => {
-        setAnimacion(null);
-        setRuta(null);
-      }, 800);
+      setCorralHover(null);
     }
   };
 
-  const layout = {
-    "Corral A": { col: 1, row: 1 },
-    "Corral B": { col: 2, row: 1 },
-    "Corral C": { col: 3, row: 1 },
-    "Corral E": { col: 4, row: 1 }
+  const styles = {
+    container: {
+      padding: "24px 32px",
+      background: "#f8fafc",
+      minHeight: "100vh",
+      color: "#0f172a",
+    },
+    card: {
+      background: "#ffffff",
+      borderRadius: "18px",
+      padding: "20px",
+      boxShadow: "0 8px 28px rgba(15, 23, 42, 0.08)",
+      border: "1px solid #e2e8f0",
+    },
+    input: {
+      padding: "10px 12px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "10px",
+      minWidth: "180px",
+      background: "#ffffff",
+      color: "#0f172a",
+    },
+    button: {
+      padding: "10px 14px",
+      border: "none",
+      borderRadius: "10px",
+      background: "#2563eb",
+      color: "#ffffff",
+      fontWeight: 700,
+      cursor: "pointer",
+    },
+    dangerButton: {
+      padding: "8px 10px",
+      border: "none",
+      borderRadius: "10px",
+      background: "#dc2626",
+      color: "#ffffff",
+      fontWeight: 700,
+      cursor: "pointer",
+    },
+    subtleButton: {
+      padding: "8px 10px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "10px",
+      background: "#f8fafc",
+      color: "#0f172a",
+      fontWeight: 700,
+      cursor: "pointer",
+      textDecoration: "none",
+    },
   };
 
-  const zonas = {
-    maternidad: ["Corral A", "Corral B"],
-    engorda: ["Corral C", "Corral E"]
-  };
-
-  const getCenter = (el) => {
-    const rect = el.getBoundingClientRect();
-    return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2
-    };
-  };
-
-  const historialAgrupado = historial.reduce((acc, mov) => {
-  const destino = mov.to || "Sin destino";
-
-  if (!acc[destino]) {
-    acc[destino] = [];
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <h2>Cargando corrales...</h2>
+      </div>
+    );
   }
 
-  acc[destino].push(mov);
-  return acc;
-}, {});
-
-  const getZonaStyle = (corralNombre) => {
-    if (zonas.maternidad.includes(corralNombre)) {
-      return {
-        color: "#4ade80", // verde
-        icon: "🍼",
-        bg: "rgba(34,197,94,0.1)"
-      };
-    }
-
-    if (zonas.engorda.includes(corralNombre)) {
-      return {
-        color: "#f87171", // rojo
-        icon: "🍖",
-        bg: "rgba(248,113,113,0.1)"
-      };
-    }
-
-    return {
-      color: "#aaa",
-      icon: "📦",
-      bg: "#222"
-    };
-  };
-
-  const tiempoRelativo = (fechaISO) => {
-    const ahora = new Date();
-    const fecha = new Date(fechaISO);
-
-    const diff = Math.floor((ahora - fecha) / 1000);
-
-    if (diff < 60) return `hace ${diff}s`;
-    if (diff < 3600) return `hace ${Math.floor(diff / 60)} min`;
-
-    return `hace ${Math.floor(diff / 3600)} h`;
-  };
-
   return (
-    <div style={{ padding: "20px" }}>
-      <h1>🐖 Tablero de Corrales</h1>
+    <div className="corrales-page" style={styles.container}>
+            <style>
+              {`
+                .corrales-page h1,
+                .corrales-page h2,
+                .corrales-page h3 {
+                  color: #0f172a !important;
+                }
 
-      {animalSeleccionado && (
-        <p style={{ color: "lime", marginBottom: "10px" }}>
-          👉 Seleccionado: {animalSeleccionado.identificador_unico} (haz click
-          en otro corral)
-        </p>
-      )}
+                .corrales-page p {
+                  color: #475569 !important;
+                }
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)", // 4 columnas fijas
-        gridTemplateRows: "repeat(2, 200px)",  // 2 filas
-        gap: "20px"
-      }}>
-        {corrales.map((c) => {
-          const ocupados = c.lechones_count ?? 0;
-          const estado = getEstado(ocupados, c.capacidad);
+                .corrales-page li {
+                  color: #334155 !important;
+                }
 
-          let zonaColor = "#1e1e1e";
+                .corrales-page input,
+                .corrales-page select {
+                  color: #0f172a !important;
+                  background-color: #ffffff !important;
+                }
+              `}
+            </style>
+      <h1 style={{ fontSize: "36px", fontWeight: 900, marginBottom: "6px" }}>
+        🏠 Corrales / Ocupación / Rotación
+      </h1>
 
-          if (zonas.maternidad.includes(c.nombre)) {
-            zonaColor = "#1a2e1a"; // verde oscuro
-          } else if (zonas.engorda.includes(c.nombre)) {
-            zonaColor = "#2e1a1a"; // rojo oscuro
-          }
+      <p style={{ color: "#475569", marginTop: 0, marginBottom: "18px" }}>
+        Control de espacios por tipo de corral. Ahora Corrales usa animales reales, no lechones como entidad principal.
+      </p>
 
-          return (
-            <div
-              key={c.id}
-              ref={(el) => corralesRef.current[c.id] = el}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setCorralHover(c.id);
-              }}
-              onDragLeave={() => setCorralHover(null)}
-              onDrop={() => {
-                handleDrop(c);
-                setCorralHover(null);
-              }}
-              style={{
-                background: zonaColor,
-                padding: "15px",
-                borderRadius: "10px",
-                minHeight: "150px",
-                transition: "all 0.2s ease",
-                gridColumn: layout[c.nombre]?.col || "auto",
-                gridRow: layout[c.nombre]?.row || "auto",
-
-                // 🔥 BORDE DINÁMICO
-                border:
-                  corralHover === c.id
-                    ? c.lechones_count >= c.capacidad
-                      ? "3px solid red"
-                      : "3px solid #22c55e"
-                    : "1px solid #333",
-
-                // 🔥 EFECTO HOVER
-                transform: corralHover === c.id ? "scale(1.03)" : "scale(1)",
-              }}
-            >
-              {/* HEADER */}
-              <h3>{c.nombre}</h3>
-
-              <p style={{ fontSize: "10px", color: "#aaa" }}>
-                {zonas.maternidad.includes(c.nombre)
-                  ? "Maternidad"
-                  : zonas.engorda.includes(c.nombre)
-                  ? "Engorda"
-                  : ""}
-              </p>
-
-              {/* OCUPACIÓN */}
-              <p style={{ color: estado.color, fontWeight: "bold" }}>
-                {ocupados}/{c.capacidad}
-              </p>
-
-              {/* ESTADO */}
-              <p style={{ fontSize: "12px", color: estado.color }}>
-                {estado.label}
-              </p>
-
-              {/* ANIMALES */}
-              <div
-                style={{
-                  marginTop: "10px",
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "5px",
-                }}
-              >
-                {!c.animales || c.animales.length === 0 ? (
-                  <span style={{ fontSize: "12px", color: "#777" }}>Vacío</span>
-                ) : (
-                  c.animales.map((a) => (
-                    a && (
-
-                      <span
-                      key={a.id}
-                      draggable
-                      onDragStart={() => handleDragStart(a, c)}
-                      style={{
-                        background:
-                          a.estado === "muerto" ? "#7f1d1d" :
-                          a.estado === "descartado" ? "#78350f" :
-                          "#333",
-                        padding: "5px 8px",
-                        borderRadius: "5px",
-                        fontSize: "12px",
-                        cursor: "grab",
-                        transition: "all 0.2s",
-                      }}
-                      onMouseDown={(e) =>
-                        (e.currentTarget.style.opacity = "0.5")
-                      }
-                      onMouseUp={(e) => (e.currentTarget.style.opacity = "1")}
-                    >
-                      🐖 {a?.identificador_unico}
-                    </span>
-
-                    )
-                  ))
-                )}
-              </div>
-
-              {/* ALERTA */}
-              {ocupados >= c.capacidad && (
-                <p
-                  style={{
-                    marginTop: "10px",
-                    color: "red",
-                    fontWeight: "bold",
-                    fontSize: "12px",
-                  }}
-                >
-                  ⚠️ Corral lleno
-                </p>
-              )}
-
-              
-            </div>
-          );
-        })}
-
-         <div style={{
-          gridColumn: "1 / span 4", // ocupa todas las columnas
-          gridRow: 2,               // segunda fila
-          background: "#111",
-          borderRadius: "8px",
-          textAlign: "center",
-          color: "#555",
-          padding: "10px"
-        }}>
-          🚜 Pasillo de manejo
-        </div>
-
-        
-      </div>
-
-      {/* 📊 HISTORIAL AGRUPADO */}
-      <div style={{
-  marginTop: "20px",
-  background: "#0a0a0a",
-  padding: "15px",
-  borderRadius: "10px"
-}}>
-  <h4 style={{ color: "#aaa", marginBottom: "10px" }}>
-    📊 Timeline de movimientos
-  </h4>
-
-  {Object.keys(historialAgrupado).length === 0 ? (
-    <p style={{ color: "#666" }}>Sin movimientos</p>
-  ) : (
-    Object.entries(historialAgrupado).map(([corral, movimientos]) => {
-      const zona = getZonaStyle(corral);
-
-      return (
-        <div key={corral} style={{ marginBottom: "20px" }}>
-          
-          {/* HEADER CORRAL */}
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            color: zona.color,
-            fontWeight: "bold"
-          }}>
-            {zona.icon} {corral}
-          </div>
-
-          {/* LÍNEA VERTICAL */}
-          <div style={{
-            borderLeft: `2px solid ${zona.color}`,
-            marginLeft: "10px",
-            paddingLeft: "15px",
-            marginTop: "10px"
-          }}>
-            
-            {movimientos.map((h, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: "12px",
-                  color: zona.color,
-                  marginLeft: "10px",
-
-                  // 🔥 AQUÍ VA LA ANIMACIÓN
-                  opacity: h.nuevo ? 0 : 1,
-                  animation: "fadeIn 0.5s forwards"
-                }}
-              >
-                
-                {/* DOT */}
-                <div style={{
-                  width: "8px",
-                  height: "8px",
-                  background: zona.color,
-                  borderRadius: "50%",
-                  position: "absolute",
-                  left: "-19px",
-                  top: "5px"
-                }} />
-
-                {/* TEXTO */}
-                <div style={{ color: "#ddd", fontSize: "13px" }}>
-                  🐖 {h.animal} → {h.to} ({h.time})
-                </div>
-
-                <div style={{
-                  fontSize: "11px",
-                  color: "#777"
-                }}>
-                  {tiempoRelativo(h.time)}
-                </div>
-
-              </div>
-            ))}
-
-          </div>
-        </div>
-      );
-    })
-  )}
-</div>
-
-      
-
-      {animacion && draggedAnimal && (
-        <div style={{
-          position: "fixed",
-          bottom: "20px",
-          right: "20px",
-          background: "#22c55e",
-          padding: "10px 15px",
-          borderRadius: "8px",
-          color: "white",
-          fontWeight: "bold",
-          boxShadow: "0 0 10px rgba(0,0,0,0.5)"
-        }}>
-          🐖 {draggedAnimal?.identificador_unico} movido
-        </div>
-      )}
-
-      {animacion && (
+      {mensaje && (
         <div
           style={{
-            position: "fixed",
-            left: animacion.from.x,
-            top: animacion.from.y,
-            transition: "all 0.6s ease-in-out",
-            transform: `translate(
-              ${animacion.to.x - animacion.from.x}px,
-              ${animacion.to.y - animacion.from.y}px
-            )`,
-            pointerEvents: "none",
-            fontSize: "20px",
-            zIndex: 999
+            background: "#dcfce7",
+            color: "#166534",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            marginBottom: "18px",
+            fontWeight: 800,
           }}
         >
-          🐖
+          {mensaje}
         </div>
       )}
 
-      {ruta && (
-        <svg
+      {resumen && (
+        <div
           style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            pointerEvents: "none"
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+            gap: "14px",
+            marginBottom: "20px",
           }}
         >
+          <div style={styles.card}>
+            <h3 style={{ marginTop: 0 }}>Corrales</h3>
+            <p style={{ fontSize: "30px", fontWeight: 900 }}>{resumen.total_corrales}</p>
+          </div>
 
-          <defs>
-            <marker
-              id="arrow"
-              markerWidth="10"
-              markerHeight="10"
-              refX="10"
-              refY="3"
-              orient="auto"
-              markerUnits="strokeWidth"
-            >
-              <path d="M0,0 L0,6 L9,3 z" fill="lime" />
-            </marker>
-          </defs>
+          <div style={styles.card}>
+            <h3 style={{ marginTop: 0 }}>Capacidad total</h3>
+            <p style={{ fontSize: "30px", fontWeight: 900 }}>{resumen.capacidad_total}</p>
+          </div>
 
-          <path
-            d={`
-              M ${ruta.from.x} ${ruta.from.y}
-              Q ${(ruta.from.x + ruta.to.x) / 2} ${(ruta.from.y + ruta.to.y) / 2 - 80}
-                ${ruta.to.x} ${ruta.to.y}
-            `}
-            stroke="lime"
-            strokeWidth="4"
-            fill="transparent"
-            markerEnd="url(#arrow)"
-            style={{
-              animation: "dash 0.6s linear"
-            }}
-          />
-        </svg>
+          <div style={styles.card}>
+            <h3 style={{ marginTop: 0 }}>Ocupados</h3>
+            <p style={{ fontSize: "30px", fontWeight: 900 }}>{resumen.ocupados}</p>
+          </div>
+
+          <div style={styles.card}>
+            <h3 style={{ marginTop: 0 }}>Disponibles</h3>
+            <p style={{ fontSize: "30px", fontWeight: 900 }}>{resumen.disponibles}</p>
+          </div>
+
+          <div style={styles.card}>
+            <h3 style={{ marginTop: 0 }}>Ocupación</h3>
+            <p style={{ fontSize: "30px", fontWeight: 900 }}>{resumen.porcentaje_ocupacion}%</p>
+          </div>
+        </div>
       )}
+
+      <div style={{ ...styles.card, marginBottom: "20px" }}>
+        <h2 style={{ marginTop: 0 }}>Crear corral</h2>
+
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <input
+            style={styles.input}
+            placeholder="Nombre del corral"
+            value={nuevoCorral.nombre}
+            onChange={(e) =>
+              setNuevoCorral({ ...nuevoCorral, nombre: e.target.value })
+            }
+          />
+
+          <input
+            style={styles.input}
+            type="number"
+            min="1"
+            placeholder="Capacidad"
+            value={nuevoCorral.capacidad}
+            onChange={(e) =>
+              setNuevoCorral({ ...nuevoCorral, capacidad: e.target.value })
+            }
+          />
+
+          <select
+            style={styles.input}
+            value={nuevoCorral.tipo_corral}
+            onChange={(e) =>
+              setNuevoCorral({ ...nuevoCorral, tipo_corral: e.target.value })
+            }
+          >
+            {tiposCorral.map((tipo) => (
+              <option key={tipo.value} value={tipo.value}>
+                {tipo.icon} {tipo.label}
+              </option>
+            ))}
+          </select>
+
+          <button style={styles.button} onClick={crearCorral}>
+            Crear corral
+          </button>
+
+          <button
+            style={{ ...styles.button, background: "#0f766e" }}
+            onClick={cargarDatos}
+          >
+            Actualizar
+          </button>
+        </div>
+      </div>
+
+      {tiposCorral.map((tipo) => {
+        const lista = corralesPorTipo[tipo.value] || [];
+
+        if (lista.length === 0) {
+          return null;
+        }
+
+        return (
+          <section key={tipo.value} style={{ marginBottom: "28px" }}>
+            <h2 style={{ marginBottom: "12px" }}>
+              {tipo.icon} {tipo.label}
+            </h2>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))",
+                gap: "16px",
+              }}
+            >
+              {lista.map((corral) => {
+                const visual = obtenerEstadoVisual(corral);
+                const porcentaje = Number(corral.porcentaje_ocupacion || 0);
+
+                return (
+                  <div
+                    key={corral.id}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setCorralHover(corral.id);
+                    }}
+                    onDragLeave={() => setCorralHover(null)}
+                    onDrop={() => moverAnimal(corral)}
+                    style={{
+                      ...styles.card,
+                      border:
+                        corralHover === corral.id
+                          ? `3px solid ${visual.border}`
+                          : `1px solid #e2e8f0`,
+                      transform:
+                        corralHover === corral.id ? "scale(1.02)" : "scale(1)",
+                      transition: "all 0.18s ease",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: "22px" }}>
+                          {corral.nombre}
+                        </h3>
+                        <p style={{ margin: "6px 0", color: "#475569" }}>
+                          {etiquetaTipoCorral(corral.tipo_corral)}
+                        </p>
+                      </div>
+
+                      <span
+                        style={{
+                          background: visual.bg,
+                          color: visual.text,
+                          border: `1px solid ${visual.border}`,
+                          padding: "6px 10px",
+                          borderRadius: "999px",
+                          fontWeight: 800,
+                          fontSize: "12px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {visual.label}
+                      </span>
+                    </div>
+
+                    <div style={{ marginTop: "14px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          fontWeight: 800,
+                          marginBottom: "6px",
+                        }}
+                      >
+                        <span>
+                          Ocupación: {corral.ocupados}/{corral.capacidad}
+                        </span>
+                        <span>{porcentaje}%</span>
+                      </div>
+
+                      <div
+                        style={{
+                          height: "10px",
+                          background: "#e2e8f0",
+                          borderRadius: "999px",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${Math.min(porcentaje, 100)}%`,
+                            background: visual.border,
+                          }}
+                        />
+                      </div>
+
+                      <p style={{ color: "#475569", marginTop: "8px" }}>
+                        Disponibles: <strong>{corral.disponibles}</strong>
+                      </p>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        display: "flex",
+                        gap: "8px",
+                        flexWrap: "wrap",
+                        minHeight: "40px",
+                      }}
+                    >
+                      {!corral.animales || corral.animales.length === 0 ? (
+                        <span style={{ color: "#64748b" }}>
+                          Sin animales activos asignados.
+                        </span>
+                      ) : (
+                        corral.animales.map((animal) => (
+                          <span
+                            key={animal.id}
+                            draggable
+                            onDragStart={() => iniciarArrastre(animal, corral)}
+                            title={`Arrastra para mover a otro corral. Estado: ${animal.estado || "N/A"}`}
+                            style={{
+                              background: "#0f172a",
+                              color: "#ffffff",
+                              padding: "7px 10px",
+                              borderRadius: "10px",
+                              fontSize: "13px",
+                              cursor: "grab",
+                              fontWeight: 700,
+                            }}
+                          >
+                            🐖 {animal.identificador_unico}
+                          </span>
+                        ))
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        flexWrap: "wrap",
+                        marginTop: "16px",
+                      }}
+                    >
+                      <Link
+                        to={`/corrales/${corral.id}`}
+                        style={styles.subtleButton}
+                      >
+                        Ver detalle
+                      </Link>
+
+                      <button
+                        style={styles.dangerButton}
+                        onClick={() => eliminarCorral(corral)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+
+      <div style={{ ...styles.card, marginTop: "20px" }}>
+        <h2 style={{ marginTop: 0 }}>Reglas activas</h2>
+        <p style={{ color: "#475569" }}>
+          El backend bloquea animales vendidos, muertos, descartados o dados de baja. También bloquea sobrecapacidad y movimientos incompatibles con el tipo de corral.
+        </p>
+
+        <ul style={{ color: "#334155", lineHeight: 1.8 }}>
+          <li>Maternidad: hembras gestantes/reproductivas, lactancia y lechones.</li>
+          <li>Gestación: hembras gestantes o reproductivas.</li>
+          <li>Reproducción: animales reproductivos o pie de cría.</li>
+          <li>Engorda: animales de abasto, crecimiento, finalización o engorda.</li>
+          <li>Enfermería y cuarentena: uso flexible controlado.</li>
+          <li>Sementales: machos reproductores.</li>
+        </ul>
+      </div>
     </div>
   );
 }

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Corral extends Model
 {
     protected $table = 'corrales';
-    protected $fillable = ['nombre', 'capacidad']; // 🔥 CLAVE
+    protected $fillable = ['nombre', 'capacidad', 'tipo_corral'];
 
     public function animales()
     {
