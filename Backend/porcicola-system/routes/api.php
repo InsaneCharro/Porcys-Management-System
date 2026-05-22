@@ -174,6 +174,12 @@ use App\Http\Controllers\AlertaController;
 Route::get('/alertas', [AlertaController::class, 'index']);
 
 use App\Http\Controllers\MuerteController;
+
+Route::get('/mortalidad-bajas', [MuerteController::class, 'index']);
+Route::get('/mortalidad-bajas/resumen', [MuerteController::class, 'resumen']);
+Route::get('/mortalidad-bajas/causas', [MuerteController::class, 'causas']);
+Route::get('/mortalidad-bajas/alertas', [MuerteController::class, 'alertas']);
+
 Route::post('/animales/{animalId}/muerte', [MuerteController::class, 'registrar']);
 Route::get('/animales/{animalId}/muertes', [MuerteController::class, 'historial']);
 

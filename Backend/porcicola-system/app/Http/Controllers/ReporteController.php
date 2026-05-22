@@ -46,16 +46,38 @@ class ReporteController extends Controller
 
     public function muertes()
     {
-        $muertes = Muerte::with('animal')
-            ->orderBy('fecha', 'desc')
+        $muertes = \App\Models\Muerte::with(['animal', 'corral'])
+            ->orderByDesc('fecha')
+            ->orderByDesc('id')
             ->get();
 
-        $pdf = Pdf::loadView('reportes.muertes', [
-            'muertes' => $muertes,
-            'fecha' => now()
-        ]);
+        $totalMuertes = $muertes
+            ->where('tipo_baja', 'muerte')
+            ->count();
 
-        return $pdf->download('reporte_bajas_porcys.pdf');
+        $totalDescartes = $muertes
+            ->where('tipo_baja', 'descarte')
+            ->count();
+
+        $perdidaTotal = $muertes->sum('costo_estimado_perdida');
+
+        $porCausa = $muertes
+            ->groupBy('causa')
+            ->map(fn($grupo) => $grupo->count());
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView(
+            'reportes.muertes',
+            [
+                'muertes' => $muertes,
+                'totalMuertes' => $totalMuertes,
+                'totalDescartes' => $totalDescartes,
+                'perdidaTotal' => $perdidaTotal,
+                'porCausa' => $porCausa,
+                'fechaGeneracion' => now(),
+            ]
+        );
+
+        return $pdf->download('reporte_mortalidad_bajas.pdf');
     }
 
     public function sanitario()
