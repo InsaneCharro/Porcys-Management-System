@@ -194,6 +194,7 @@ Route::get('/clientes-ranking', [ClienteController::class, 'ranking']);
 Route::get('/dashboard/pesos-evolucion', [DashboardController::class, 'pesosEvolucion']);
 
 use App\Http\Controllers\ReporteController;
+use App\Http\Controllers\FinanzasController;
 Route::get('/reportes/ventas', [ReporteController::class, 'ventas']);
 Route::get('/reportes/inventario', [ReporteController::class, 'inventario']);
 Route::get('/reportes/muertes', [ReporteController::class, 'muertes']);
@@ -201,7 +202,7 @@ Route::get('/reportes/sanitario', [ReporteController::class, 'sanitario']);
 Route::get('/reportes/dashboard', [ReporteController::class, 'dashboard']);
 Route::get('/reportes/ventas-excel', [ReporteController::class, 'ventasExcel']);
 Route::post('/finanzas/consumo-diario', [ReporteController::class, 'registrarConsumoDiario']);
-Route::get('/finanzas/resumen', [ReporteController::class, 'resumenFinanciero']);
+Route::get('/finanzas/resumen', [FinanzasController::class, 'resumen']);
 Route::get('/finanzas/pdf', [ReporteController::class, 'finanzasPdf']);
 Route::get('/finanzas/excel', [ReporteController::class, 'finanzasExcel']);
 
