@@ -3,343 +3,894 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Animal;
-use App\Models\Peso;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 class DashboardController extends Controller
 {
     public function resumen()
     {
-        // 🐖 Total animales
-        $total = Animal::count();
+        try {
+            $animales = $this->resumenAnimales();
+            $mortalidad = $this->resumenMortalidadBajas();
+            $corrales = $this->resumenCorrales();
+            $reproduccion = $this->resumenReproduccion();
+            $alimentacionInventario = $this->resumenAlimentacionInventario();
+            $sanidad = $this->resumenSanidad();
+            $finanzas = $this->resumenFinanzas($mortalidad);
+            $alertasGenerales = $this->resumenAlertasGenerales(
+                $mortalidad,
+                $corrales,
+                $reproduccion,
+                $alimentacionInventario,
+                $sanidad
+            );
 
-        // 📊 Por etapa
-        $porEtapa = Animal::select(
-            'etapa_actual',
-            DB::raw('count(*) as total')
-        )
-        ->groupBy('etapa_actual')
-        ->get();
+            return response()->json([
+                // =====================================================
+                // CAMPOS LEGADOS: se conservan para no romper Dashboard.jsx
+                // =====================================================
+                'total_animales' => $animales['total'],
+                'por_etapa' => $animales['por_etapa'],
+                'peso_promedio' => $this->pesoPromedioPorEtapa(),
+                'muertes' => $mortalidad['muertes'],
+                'alertas_crecimiento' => $this->alertasCrecimientoReciente(),
+                'alertas_parto' => $reproduccion['alertas_parto'],
+                'lechones_hoy' => $animales['lechones_hoy'],
+                'bajo_crecimiento' => $this->contarAnimalesBajoCrecimiento(),
+                'gestaciones_activas' => $reproduccion['hembras_gestantes'],
+                'partos_30d' => $reproduccion['partos_ultimos_30_dias'],
+                'ventas_totales' => $finanzas['ventas_totales'],
+                'ventas_mes' => $finanzas['ventas_mes'],
+                'ingreso_promedio' => $finanzas['ingreso_promedio'],
+                'stock_total' => $alimentacionInventario['stock_total_kg'],
+                'stock_bajo_medicamentos' => $sanidad['medicamentos_bajos'],
+                'alertas_sanitarias' => $sanidad['alertas_sanitarias_count'],
+                'camadas_activas' => $reproduccion['camadas_activas'],
+                'lechones_vivos' => $animales['lechones_vivos'],
+                'partos_proximos' => $reproduccion['proximos_partos'],
+                'destetes_pendientes' => $reproduccion['destetes_pendientes'],
+                'corrales' => $corrales['corrales'],
 
-        // ⚖️ Peso promedio por etapa
-        $pesoPromedio = DB::table('pesos')
-            ->join('animales', 'pesos.animal_id', '=', 'animales.id')
-            ->select(
-                'animales.etapa_actual as etapa',
-                DB::raw('AVG(pesos.peso) as promedio')
-            )
-            ->groupBy('animales.etapa_actual')
+                // =====================================================
+                // NUEVA ESTRUCTURA GERENCIAL ERP - Sprint 11
+                // =====================================================
+                'animales' => $animales,
+                'mortalidad_bajas' => $mortalidad,
+                'corrales_resumen' => $corrales,
+                'reproduccion' => $reproduccion,
+                'alimentacion_inventario' => $alimentacionInventario,
+                'sanidad' => $sanidad,
+                'finanzas' => $finanzas,
+                'alertas_generales' => $alertasGenerales,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'error' => 'Error al construir el dashboard gerencial.',
+                'detalle' => $e->getMessage(),
+                'linea' => $e->getLine(),
+            ], 500);
+        }
+    }
+
+    private function resumenAnimales(): array
+    {
+        if (!Schema::hasTable('animales')) {
+            return [
+                'total' => 0,
+                'activos' => 0,
+                'muertos' => 0,
+                'descartados' => 0,
+                'bajas' => 0,
+                'lechones_vivos' => 0,
+                'lechones_hoy' => 0,
+                'por_etapa' => [],
+                'por_sexo' => [],
+            ];
+        }
+
+        $total = DB::table('animales')->count();
+
+        $muertos = $this->hasColumn('animales', 'estado')
+            ? DB::table('animales')->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%muert%'])->count()
+            : 0;
+
+        $descartados = $this->hasColumn('animales', 'estado')
+            ? DB::table('animales')->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%descart%'])->count()
+            : 0;
+
+        $bajas = $this->hasColumn('animales', 'estado')
+            ? DB::table('animales')->whereRaw("LOWER(COALESCE(estado, '')) LIKE ?", ['%baja%'])->count()
+            : 0;
+
+        $activos = $this->hasColumn('animales', 'estado')
+            ? DB::table('animales')
+                ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
+                ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
+                ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%'])
+                ->count()
+            : $total;
+
+        $porEtapa = $this->hasColumn('animales', 'etapa_actual')
+            ? DB::table('animales')
+                ->selectRaw("COALESCE(etapa_actual, 'Sin etapa') as etapa_actual, COUNT(*) as total")
+                ->groupBy('etapa_actual')
+                ->orderByDesc('total')
+                ->get()
+            : collect();
+
+        $porSexo = $this->hasColumn('animales', 'sexo')
+            ? DB::table('animales')
+                ->selectRaw("COALESCE(sexo, 'Sin sexo') as sexo, COUNT(*) as total")
+                ->groupBy('sexo')
+                ->orderByDesc('total')
+                ->get()
+            : collect();
+
+        $lechonesVivos = 0;
+        if ($this->hasColumn('animales', 'etapa_actual')) {
+            $query = DB::table('animales')->where('etapa_actual', 'lechon');
+
+            if ($this->hasColumn('animales', 'estado')) {
+                $query->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
+                    ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%']);
+            }
+
+            $lechonesVivos = $query->count();
+        }
+
+        $lechonesHoy = 0;
+        if ($this->hasColumn('animales', 'created_at') && $this->hasColumn('animales', 'etapa_actual')) {
+            $lechonesHoy = DB::table('animales')
+                ->whereDate('created_at', now()->toDateString())
+                ->where('etapa_actual', 'lechon')
+                ->count();
+        }
+
+        return [
+            'total' => $total,
+            'activos' => $activos,
+            'muertos' => $muertos,
+            'descartados' => $descartados,
+            'bajas' => $bajas,
+            'lechones_vivos' => $lechonesVivos,
+            'lechones_hoy' => $lechonesHoy,
+            'por_etapa' => $porEtapa,
+            'por_sexo' => $porSexo,
+        ];
+    }
+
+    private function resumenMortalidadBajas(): array
+    {
+        if (!Schema::hasTable('muertes')) {
+            return [
+                'total' => 0,
+                'muertes' => 0,
+                'descartes' => 0,
+                'ultimos_30_dias' => 0,
+                'muertes_recientes' => 0,
+                'descartes_recientes' => 0,
+                'principal_causa' => null,
+                'perdida_estimada_total' => 0,
+                'por_causa' => [],
+                'por_etapa' => [],
+                'recientes' => [],
+                'alertas' => [],
+            ];
+        }
+
+        $total = DB::table('muertes')->count();
+
+        $muertes = $this->hasColumn('muertes', 'tipo_baja')
+            ? DB::table('muertes')->where('tipo_baja', 'muerte')->count()
+            : $total;
+
+        $descartes = $this->hasColumn('muertes', 'tipo_baja')
+            ? DB::table('muertes')->where('tipo_baja', 'descarte')->count()
+            : 0;
+
+        $ultimos30 = $this->hasColumn('muertes', 'fecha')
+            ? DB::table('muertes')->whereDate('fecha', '>=', now()->subDays(30)->toDateString())->count()
+            : 0;
+
+        $muertesRecientes = 0;
+        $descartesRecientes = 0;
+
+        if ($this->hasColumn('muertes', 'fecha') && $this->hasColumn('muertes', 'tipo_baja')) {
+            $muertesRecientes = DB::table('muertes')
+                ->where('tipo_baja', 'muerte')
+                ->whereDate('fecha', '>=', now()->subDays(30)->toDateString())
+                ->count();
+
+            $descartesRecientes = DB::table('muertes')
+                ->where('tipo_baja', 'descarte')
+                ->whereDate('fecha', '>=', now()->subDays(30)->toDateString())
+                ->count();
+        }
+
+        $porCausa = $this->hasColumn('muertes', 'causa')
+            ? DB::table('muertes')
+                ->selectRaw("COALESCE(causa, 'Sin causa') as causa, COUNT(*) as total")
+                ->groupBy('causa')
+                ->orderByDesc('total')
+                ->get()
+            : collect();
+
+        $principalCausa = $porCausa->first();
+
+        $porEtapa = $this->hasColumn('muertes', 'etapa_animal_snapshot')
+            ? DB::table('muertes')
+                ->selectRaw("COALESCE(etapa_animal_snapshot, 'Sin etapa') as etapa, COUNT(*) as total")
+                ->groupBy('etapa_animal_snapshot')
+                ->orderByDesc('total')
+                ->get()
+            : collect();
+
+        $perdidaEstimada = $this->hasColumn('muertes', 'costo_estimado_perdida')
+            ? (float) DB::table('muertes')->sum('costo_estimado_perdida')
+            : 0;
+
+        $recientes = DB::table('muertes')
+            ->when($this->hasColumn('muertes', 'fecha'), function ($query) {
+                $query->orderByDesc('fecha');
+            })
+            ->orderByDesc('id')
+            ->limit(8)
             ->get();
 
-        // ☠️ Mortalidad
-        $muertos = Animal::where('estado', 'muerto')->count();
-
-        // 💰 Ventas totales
-        $ventasTotales = DB::table('ventas')->exists()
-            ? DB::table('ventas')->sum('total')
-            : 0;
-
-        // 📦 Stock alimento
-        $stockTotal = DB::table('inventarios')->exists()
-            ? DB::table('inventarios')->sum('stock_kg')
-            : 0;
-
-        // 🤰 Gestaciones activas
-        $gestacionesActivas = DB::table('gestaciones')->exists()
-            ? DB::table('gestaciones')
-                ->whereIn('estado', ['activa', 'confirmada'])
-                ->count()
-            : 0;
-
-        // ⚠️ ALERTAS DE CRECIMIENTO
         $alertas = [];
 
-        $animales = Animal::all();
+        if ($muertesRecientes >= 5) {
+            $alertas[] = [
+                'tipo' => 'alta_mortalidad',
+                'nivel' => 'critica',
+                'mensaje' => 'Alta mortalidad reciente: ' . $muertesRecientes . ' muertes en los últimos 30 días.',
+            ];
+        }
 
-        foreach ($animales as $animal) {
-
-            $pesos = Peso::where('animal_id', $animal->id)
-                ->orderBy('fecha', 'desc')
-                ->take(2)
+        if ($this->hasColumn('muertes', 'causa') && $this->hasColumn('muertes', 'fecha')) {
+            $causasRepetidas = DB::table('muertes')
+                ->selectRaw('causa, COUNT(*) as total')
+                ->whereDate('fecha', '>=', now()->subDays(30)->toDateString())
+                ->groupBy('causa')
+                ->having('total', '>=', 3)
+                ->orderByDesc('total')
                 ->get();
 
-            if ($pesos->count() == 2) {
+            foreach ($causasRepetidas as $causa) {
+                $alertas[] = [
+                    'tipo' => 'causa_repetida',
+                    'nivel' => 'importante',
+                    'mensaje' => 'Causa repetida detectada: ' . ($causa->causa ?? 'Sin causa') . ' con ' . $causa->total . ' casos recientes.',
+                ];
+            }
+        }
 
-                if ($pesos[0]->peso <= $pesos[1]->peso) {
+        return [
+            'total' => $total,
+            'muertes' => $muertes,
+            'descartes' => $descartes,
+            'ultimos_30_dias' => $ultimos30,
+            'muertes_recientes' => $muertesRecientes,
+            'descartes_recientes' => $descartesRecientes,
+            'principal_causa' => $principalCausa,
+            'perdida_estimada_total' => round($perdidaEstimada, 2),
+            'por_causa' => $porCausa,
+            'por_etapa' => $porEtapa,
+            'recientes' => $recientes,
+            'alertas' => $alertas,
+        ];
+    }
 
+    private function resumenCorrales(): array
+    {
+        if (!Schema::hasTable('corrales')) {
+            return [
+                'total' => 0,
+                'capacidad_total' => 0,
+                'ocupados' => 0,
+                'espacios_disponibles' => 0,
+                'corrales_saturados' => 0,
+                'corrales' => [],
+                'alertas' => [],
+            ];
+        }
+
+        $corralesBase = DB::table('corrales')->get();
+        $corrales = collect();
+        $capacidadTotal = 0;
+        $ocupadosTotal = 0;
+        $saturados = 0;
+        $alertas = [];
+
+        foreach ($corralesBase as $corral) {
+            $capacidad = isset($corral->capacidad) && (int) $corral->capacidad > 0
+                ? (int) $corral->capacidad
+                : 0;
+
+            $ocupados = 0;
+
+            if (Schema::hasTable('animales') && $this->hasColumn('animales', 'corral_id')) {
+                $ocupadosQuery = DB::table('animales')->where('corral_id', $corral->id);
+
+                if ($this->hasColumn('animales', 'estado')) {
+                    $ocupadosQuery->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%']);
+                }
+
+                $ocupados = $ocupadosQuery->count();
+            } elseif (Schema::hasTable('lechones') && $this->hasColumn('lechones', 'corral_id')) {
+                $ocupados = DB::table('lechones')->where('corral_id', $corral->id)->count();
+            }
+
+            $ocupacion = $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 1) : 0;
+            $disponibles = max($capacidad - $ocupados, 0);
+            $saturado = $capacidad > 0 && $ocupacion >= 90;
+
+            if ($saturado) {
+                $saturados++;
+                $alertas[] = [
+                    'tipo' => 'corral_saturado',
+                    'nivel' => 'critica',
+                    'mensaje' => 'Corral saturado: ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' con ' . $ocupacion . '% de ocupación.',
+                ];
+            }
+
+            $capacidadTotal += $capacidad;
+            $ocupadosTotal += $ocupados;
+
+            $corrales->push([
+                'id' => $corral->id,
+                'nombre' => $corral->nombre ?? ('Corral #' . $corral->id),
+                'capacidad' => $capacidad,
+                'ocupados' => $ocupados,
+                'disponibles' => $disponibles,
+                'ocupacion' => $ocupacion,
+                'saturado' => $saturado,
+            ]);
+        }
+
+        return [
+            'total' => $corralesBase->count(),
+            'capacidad_total' => $capacidadTotal,
+            'ocupados' => $ocupadosTotal,
+            'espacios_disponibles' => max($capacidadTotal - $ocupadosTotal, 0),
+            'corrales_saturados' => $saturados,
+            'corrales' => $corrales,
+            'alertas' => $alertas,
+        ];
+    }
+
+    private function resumenReproduccion(): array
+    {
+        $estadosGestantes = ['activa', 'confirmada', 'gestante'];
+
+        $hembrasGestantes = 0;
+        $proximosPartos = 0;
+        $partosUltimos30 = 0;
+        $alertasParto = collect();
+        $partosAtrasados = 0;
+
+        if (Schema::hasTable('gestaciones')) {
+            if ($this->hasColumn('gestaciones', 'estado')) {
+                $hembrasGestantes = DB::table('gestaciones')
+                    ->whereIn('estado', $estadosGestantes)
+                    ->count();
+            }
+
+            if ($this->hasColumn('gestaciones', 'fecha_probable_parto')) {
+                $proximosQuery = DB::table('gestaciones')
+                    ->whereNotNull('fecha_probable_parto')
+                    ->whereDate('fecha_probable_parto', '>=', now()->toDateString())
+                    ->whereDate('fecha_probable_parto', '<=', now()->addDays(10)->toDateString());
+
+                if ($this->hasColumn('gestaciones', 'estado')) {
+                    $proximosQuery->whereIn('estado', $estadosGestantes);
+                }
+
+                $proximosPartos = $proximosQuery->count();
+
+                $atrasadosQuery = DB::table('gestaciones')
+                    ->whereNotNull('fecha_probable_parto')
+                    ->whereDate('fecha_probable_parto', '<', now()->toDateString());
+
+                if ($this->hasColumn('gestaciones', 'estado')) {
+                    $atrasadosQuery->whereIn('estado', $estadosGestantes);
+                }
+
+                $partosAtrasados = $atrasadosQuery->count();
+
+                $alertasQuery = DB::table('gestaciones')
+                    ->whereNotNull('gestaciones.fecha_probable_parto')
+                    ->whereDate('gestaciones.fecha_probable_parto', '<=', now()->addDays(10)->toDateString())
+                    ->when($this->hasColumn('gestaciones', 'estado'), function ($query) use ($estadosGestantes) {
+                        $query->whereIn('gestaciones.estado', $estadosGestantes);
+                    });
+
+                $puedeUnirAnimal = Schema::hasTable('animales')
+                    && $this->hasColumn('animales', 'id')
+                    && $this->hasColumn('animales', 'identificador_unico')
+                    && ($this->hasColumn('gestaciones', 'hembra_id') || $this->hasColumn('gestaciones', 'animal_id'));
+
+                if ($puedeUnirAnimal) {
+                    $alertasQuery->leftJoin('animales', function ($join) {
+                        if ($this->hasColumn('gestaciones', 'hembra_id')) {
+                            $join->on('gestaciones.hembra_id', '=', 'animales.id');
+                        }
+
+                        if ($this->hasColumn('gestaciones', 'animal_id')) {
+                            $join->orOn('gestaciones.animal_id', '=', 'animales.id');
+                        }
+                    })
+                    ->select(
+                        'gestaciones.id',
+                        'gestaciones.fecha_probable_parto',
+                        'animales.identificador_unico as animal'
+                    );
+                } else {
+                    $alertasQuery->select(
+                        'gestaciones.id',
+                        'gestaciones.fecha_probable_parto',
+                        DB::raw("'Sin animal' as animal")
+                    );
+                }
+
+                $alertasParto = $alertasQuery
+                    ->orderBy('gestaciones.fecha_probable_parto')
+                    ->limit(10)
+                    ->get()
+                    ->map(function ($g) {
+                        return [
+                            'gestacion_id' => $g->id,
+                            'animal' => $g->animal ?? 'Sin animal',
+                            'fecha_probable_parto' => $g->fecha_probable_parto,
+                            'dias' => now()->startOfDay()->diffInDays($g->fecha_probable_parto, false),
+                        ];
+                    });
+            }
+
+            if ($this->hasColumn('gestaciones', 'fecha_parto_real')) {
+                $partosUltimos30 = DB::table('gestaciones')
+                    ->whereDate('fecha_parto_real', '>=', now()->subDays(30)->toDateString())
+                    ->count();
+            }
+        }
+
+        $serviciosPendientes = 0;
+        $totalServicios = 0;
+        $serviciosExitosos = 0;
+        $serviciosFallidos = 0;
+        $tasaExito = 0;
+
+        if (Schema::hasTable('servicios_reproductivos')) {
+            $totalServicios = DB::table('servicios_reproductivos')->count();
+
+            if ($this->hasColumn('servicios_reproductivos', 'resultado')) {
+                $serviciosPendientes = DB::table('servicios_reproductivos')
+                    ->where('resultado', 'pendiente')
+                    ->count();
+
+                $serviciosExitosos = DB::table('servicios_reproductivos')
+                    ->where('resultado', 'preñada')
+                    ->count();
+
+                $serviciosFallidos = DB::table('servicios_reproductivos')
+                    ->where('resultado', 'no_preñada')
+                    ->count();
+
+                $serviciosConfirmados = $serviciosExitosos + $serviciosFallidos;
+                $tasaExito = $serviciosConfirmados > 0
+                    ? round(($serviciosExitosos / $serviciosConfirmados) * 100, 2)
+                    : 0;
+            }
+        }
+
+        $camadasActivas = 0;
+        $destetesPendientes = 0;
+
+        if (Schema::hasTable('camadas')) {
+            if ($this->hasColumn('camadas', 'estado')) {
+                $camadasActivas = DB::table('camadas')->where('estado', 'activa')->count();
+            } else {
+                $camadasActivas = DB::table('camadas')->count();
+            }
+
+            if ($this->hasColumn('camadas', 'fecha_parto')) {
+                $destetesQuery = DB::table('camadas')
+                    ->whereDate('fecha_parto', '<=', now()->subDays(28)->toDateString());
+
+                if ($this->hasColumn('camadas', 'estado')) {
+                    $destetesQuery->where('estado', 'activa');
+                }
+
+                $destetesPendientes = $destetesQuery->count();
+            }
+        }
+
+        return [
+            'hembras_gestantes' => $hembrasGestantes,
+            'proximos_partos' => $proximosPartos,
+            'partos_atrasados' => $partosAtrasados,
+            'partos_ultimos_30_dias' => $partosUltimos30,
+            'servicios_pendientes' => $serviciosPendientes,
+            'total_servicios' => $totalServicios,
+            'servicios_exitosos' => $serviciosExitosos,
+            'servicios_fallidos' => $serviciosFallidos,
+            'tasa_exito_reproductivo' => $tasaExito,
+            'camadas_activas' => $camadasActivas,
+            'destetes_pendientes' => $destetesPendientes,
+            'alertas_parto' => $alertasParto,
+        ];
+    }
+
+    private function resumenAlimentacionInventario(): array
+    {
+        $stockTotal = 0;
+        $stockCritico = collect();
+        $ingredientesBajos = 0;
+
+        if (Schema::hasTable('inventarios')) {
+            if ($this->hasColumn('inventarios', 'stock_kg')) {
+                $stockTotal = (float) DB::table('inventarios')->sum('stock_kg');
+
+                $stockCritico = DB::table('inventarios')
+                    ->where('stock_kg', '<', 50)
+                    ->orderBy('stock_kg')
+                    ->limit(10)
+                    ->get();
+
+                $ingredientesBajos = DB::table('inventarios')
+                    ->where('stock_kg', '<', 50)
+                    ->count();
+            }
+        }
+
+        $consumoRecienteKg = 0;
+        $consumosRecientes = collect();
+
+        if (Schema::hasTable('consumos_alimentacion')) {
+            $consumoQuery = DB::table('consumos_alimentacion');
+
+            if ($this->hasColumn('consumos_alimentacion', 'fecha')) {
+                $consumoQuery->whereDate('fecha', '>=', now()->subDays(30)->toDateString());
+            }
+
+            if ($this->hasColumn('consumos_alimentacion', 'cantidad_kg')) {
+                $consumoRecienteKg = (float) $consumoQuery->sum('cantidad_kg');
+            }
+
+            $consumosRecientes = DB::table('consumos_alimentacion')
+                ->when($this->hasColumn('consumos_alimentacion', 'fecha'), function ($query) {
+                    $query->orderByDesc('fecha');
+                })
+                ->orderByDesc('id')
+                ->limit(8)
+                ->get();
+        }
+
+        $alertas = [];
+
+        foreach ($stockCritico as $producto) {
+            $nombre = $producto->nombre_producto
+                ?? $producto->nombre
+                ?? ('Inventario #' . $producto->id);
+
+            $alertas[] = [
+                'tipo' => 'stock_bajo',
+                'nivel' => ((float) ($producto->stock_kg ?? 0) <= 0) ? 'critica' : 'importante',
+                'mensaje' => 'Stock bajo en ' . $nombre . ': ' . round((float) ($producto->stock_kg ?? 0), 2) . ' kg.',
+            ];
+        }
+
+        return [
+            'stock_total_kg' => round($stockTotal, 2),
+            'stock_critico_count' => $stockCritico->count(),
+            'ingredientes_bajos' => $ingredientesBajos,
+            'stock_critico' => $stockCritico,
+            'consumo_ultimos_30_dias_kg' => round($consumoRecienteKg, 2),
+            'consumos_recientes' => $consumosRecientes,
+            'alertas' => $alertas,
+        ];
+    }
+
+    private function resumenSanidad(): array
+    {
+        $eventosRecientesCount = 0;
+        $eventosRecientes = collect();
+
+        if (Schema::hasTable('eventos_sanitarios')) {
+            $eventosQuery = DB::table('eventos_sanitarios');
+
+            if ($this->hasColumn('eventos_sanitarios', 'fecha')) {
+                $eventosQuery->whereDate('fecha', '>=', now()->subDays(30)->toDateString());
+            }
+
+            $eventosRecientesCount = $eventosQuery->count();
+
+            $eventosRecientes = DB::table('eventos_sanitarios')
+                ->when($this->hasColumn('eventos_sanitarios', 'fecha'), function ($query) {
+                    $query->orderByDesc('fecha');
+                })
+                ->orderByDesc('id')
+                ->limit(8)
+                ->get();
+        }
+
+        $medicamentosBajos = 0;
+        $medicamentosCriticos = collect();
+
+        if (Schema::hasTable('medicamentos') && $this->hasColumn('medicamentos', 'stock')) {
+            $medicamentosBajos = DB::table('medicamentos')->where('stock', '<', 10)->count();
+            $medicamentosCriticos = DB::table('medicamentos')
+                ->where('stock', '<', 10)
+                ->orderBy('stock')
+                ->limit(10)
+                ->get();
+        }
+
+        $alertas = [];
+
+        foreach ($medicamentosCriticos as $medicamento) {
+            $alertas[] = [
+                'tipo' => 'medicamento_bajo',
+                'nivel' => ((float) ($medicamento->stock ?? 0) <= 0) ? 'critica' : 'importante',
+                'mensaje' => 'Stock bajo de medicamento: ' . ($medicamento->nombre ?? ('Medicamento #' . $medicamento->id)) . '.',
+            ];
+        }
+
+        if (Schema::hasTable('animales') && $this->hasColumn('animales', 'fecha_nacimiento') && $this->hasColumn('animales', 'etapa_actual')) {
+            $lechones = DB::table('animales')
+                ->where('etapa_actual', 'lechon')
+                ->whereNotNull('fecha_nacimiento')
+                ->when($this->hasColumn('animales', 'estado'), function ($query) {
+                    $query->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%']);
+                })
+                ->limit(300)
+                ->get();
+
+            foreach ($lechones as $lechon) {
+                $edad = now()->diffInDays($lechon->fecha_nacimiento, false);
+                $edad = abs((int) $edad);
+
+                if ($edad >= 3 && $edad <= 5) {
                     $alertas[] = [
-                        'animal_id' => $animal->id,
-                        'mensaje' => 'No hay crecimiento reciente'
+                        'tipo' => 'hierro_pendiente',
+                        'nivel' => 'importante',
+                        'mensaje' => 'Hierro dextrán pendiente para ' . ($lechon->identificador_unico ?? ('Animal #' . $lechon->id)) . '.',
+                    ];
+                }
+
+                if ($edad >= 21 && $edad <= 30) {
+                    $alertas[] = [
+                        'tipo' => 'vacunacion_recomendada',
+                        'nivel' => 'informativa',
+                        'mensaje' => 'Vacunación recomendada para ' . ($lechon->identificador_unico ?? ('Animal #' . $lechon->id)) . '.',
                     ];
                 }
             }
         }
 
-        // 🧠 PRODUCCIÓN
-        $gestaciones = \App\Models\Gestacion::whereIn(
-            'estado',
-            ['activa', 'confirmada']
-        )->count();
+        return [
+            'eventos_sanitarios_recientes' => $eventosRecientesCount,
+            'eventos_recientes' => $eventosRecientes,
+            'medicamentos_bajos' => $medicamentosBajos,
+            'medicamentos_criticos' => $medicamentosCriticos,
+            'alertas_sanitarias_count' => count($alertas),
+            'alertas' => $alertas,
+        ];
+    }
 
-        $partos = \App\Models\Gestacion::where('estado', 'parida')
-            ->where('fecha_parto_real', '>=', now()->subDays(30))
-            ->count();
+    private function resumenFinanzas(array $mortalidad): array
+    {
+        $ventasTotales = 0;
+        $ventasMes = 0;
+        $ventasCount = 0;
+        $ingresoPromedio = 0;
 
-        // 💰 ECONÓMICO
-        $ventasMes = \App\Models\Venta::whereMonth(
-            'fecha',
-            now()->month
-        )->sum('total');
+        if (Schema::hasTable('ventas')) {
+            $ventasCount = DB::table('ventas')->count();
 
-        $ventasCount = \App\Models\Venta::count();
+            if ($this->hasColumn('ventas', 'total')) {
+                $ventasTotales = (float) DB::table('ventas')->sum('total');
 
-        $ingresoPromedio = $ventasCount > 0
-            ? \App\Models\Venta::sum('total') / $ventasCount
-            : 0;
+                if ($this->hasColumn('ventas', 'fecha')) {
+                    $ventasMes = (float) DB::table('ventas')
+                        ->whereMonth('fecha', now()->month)
+                        ->whereYear('fecha', now()->year)
+                        ->sum('total');
+                }
 
-        // 🧪 SANIDAD
-        $alertasSanidad = app(
-            \App\Http\Controllers\MedicamentoController::class
-        )->alertas()->getData();
-
-        // 💊 STOCK BAJO MEDICAMENTOS
-        $stockBajo = \App\Models\Medicamento::where(
-            'stock',
-            '<',
-            10
-        )->count();
-
-        // 🔴 ANIMALES BAJO CRECIMIENTO
-        $bajoCrecimiento = 0;
-
-        foreach ($animales as $animal) {
-
-            $pesos = Peso::where('animal_id', $animal->id)
-                ->orderBy('fecha')
-                ->get();
-
-            if ($pesos->count() == 0) {
-                continue;
-            }
-
-            $totalCumplimiento = 0;
-
-            foreach ($pesos as $index => $p) {
-
-                $ideal = 8 + ($index * 3);
-
-                $totalCumplimiento += ($p->peso / $ideal);
-            }
-
-            $cumplimiento = (
-                $totalCumplimiento / $pesos->count()
-            ) * 100;
-
-            if ($cumplimiento < 70) {
-                $bajoCrecimiento++;
+                $ingresoPromedio = $ventasCount > 0
+                    ? round($ventasTotales / $ventasCount, 2)
+                    : 0;
             }
         }
 
-        // 🚨 ALERTAS DE PARTO
-        $alertasParto = \App\Models\Gestacion::with('animal')
-            ->where('estado', 'confirmada')
-            ->whereNotNull('fecha_probable_parto')
-            ->get()
-            ->filter(function ($g) {
+        $comprasTotales = 0;
 
-                $dias = (int) now()
-                    ->diffInDays(
-                        $g->fecha_probable_parto,
-                        false
-                    );
+        if (Schema::hasTable('ordenes_compra')) {
+            foreach (['total', 'total_estimado', 'monto_total'] as $columna) {
+                if ($this->hasColumn('ordenes_compra', $columna)) {
+                    $comprasTotales = (float) DB::table('ordenes_compra')->sum($columna);
+                    break;
+                }
+            }
+        }
 
-                return $dias <= 10;
-            })
-            ->map(function ($g) {
+        return [
+            'ventas_totales' => round($ventasTotales, 2),
+            'ventas_mes' => round($ventasMes, 2),
+            'ventas_count' => $ventasCount,
+            'ingreso_promedio' => $ingresoPromedio,
+            'compras_totales' => round($comprasTotales, 2),
+            'perdidas_por_bajas' => $mortalidad['perdida_estimada_total'] ?? 0,
+            'balance_basico' => round($ventasTotales - $comprasTotales - ($mortalidad['perdida_estimada_total'] ?? 0), 2),
+        ];
+    }
 
-                $animal = $g->animal;
+    private function resumenAlertasGenerales(
+        array $mortalidad,
+        array $corrales,
+        array $reproduccion,
+        array $alimentacionInventario,
+        array $sanidad
+    ): array {
+        $alertas = [];
 
-                return [
-                    'animal' => $animal
-                        ? $animal->identificador_unico
-                        : 'Sin animal',
+        $alertas = array_merge($alertas, $mortalidad['alertas'] ?? []);
+        $alertas = array_merge($alertas, $corrales['alertas'] ?? []);
+        $alertas = array_merge($alertas, $alimentacionInventario['alertas'] ?? []);
+        $alertas = array_merge($alertas, $sanidad['alertas'] ?? []);
 
-                    'dias' => (int) now()
-                        ->diffInDays(
-                            $g->fecha_probable_parto,
-                            false
-                        )
-                ];
-            })
-            ->values();
+        if (($reproduccion['partos_atrasados'] ?? 0) > 0) {
+            $alertas[] = [
+                'tipo' => 'partos_atrasados',
+                'nivel' => 'critica',
+                'mensaje' => 'Hay ' . $reproduccion['partos_atrasados'] . ' gestaciones con parto atrasado.',
+            ];
+        }
 
-        // 🐷 Lechones nacidos hoy
-        $lechonesHoy = Animal::whereDate(
-            'created_at',
-            today()
-        )
-        ->where('etapa_actual', 'lechon')
-        ->count();
+        if (($reproduccion['proximos_partos'] ?? 0) > 0) {
+            $alertas[] = [
+                'tipo' => 'partos_proximos',
+                'nivel' => 'importante',
+                'mensaje' => 'Hay ' . $reproduccion['proximos_partos'] . ' partos próximos en los siguientes 10 días.',
+            ];
+        }
 
-        // 🐷 Camadas activas
-        $camadasActivas = \App\Models\Camada::where(
-            'estado',
-            'activa'
-        )->count();
+        $criticas = collect($alertas)->where('nivel', 'critica')->count();
+        $importantes = collect($alertas)->where('nivel', 'importante')->count();
+        $informativas = collect($alertas)->where('nivel', 'informativa')->count();
 
-        // 🐖 Lechones vivos
-        $lechonesVivos = Animal::where(
-            'etapa_actual',
-            'lechon'
-        )
-        ->where('estado', 'activo')
-        ->count();
-
-        // ⚠️ Partos próximos
-        $partosProximos = \App\Models\Gestacion::where(
-            'estado',
-            'confirmada'
-        )
-        ->whereDate(
-            'fecha_probable_parto',
-            '<=',
-            now()->addDays(7)
-        )
-        ->count();
-
-        // 🍼 Destetes pendientes
-        $destetesPendientes = \App\Models\Camada::where(
-            'estado',
-            'activa'
-        )
-        ->whereDate(
-            'fecha_parto',
-            '<=',
-            now()->subDays(28)
-        )
-        ->count();
-
-        // 🏠 ESTADO DE CORRALES
-
-        $corrales = \App\Models\Corral::withCount('animales')
-            ->get()
-            ->map(function ($corral) {
-
-                $capacidad = $corral->capacidad ?? 1;
-
-                $ocupacion = round(
-                    ($corral->animales_count / $capacidad) * 100,
-                    1
-                );
-
-                return [
-                    'id' => $corral->id,
-                    'nombre' => $corral->nombre,
-                    'capacidad' => $capacidad,
-                    'ocupados' => $corral->animales_count,
-                    'ocupacion' => $ocupacion
-                ];
-            });
-
-        return response()->json([
-
-            // 🔹 EXISTENTE
-            'total_animales' => $total,
-            'por_etapa' => $porEtapa,
-            'peso_promedio' => $pesoPromedio,
-            'muertes' => $muertos,
-            'alertas_crecimiento' => $alertas,
-            'alertas_parto' => $alertasParto,
-            'lechones_hoy' => $lechonesHoy,
-
-            // 🔥 PRODUCCIÓN
-            'bajo_crecimiento' => $bajoCrecimiento,
-            'gestaciones_activas' => $gestaciones,
-            'partos_30d' => $partos,
-
-            // 💰 ECONÓMICO
-            'ventas_totales' => $ventasTotales,
-            'ventas_mes' => $ventasMes,
-            'ingreso_promedio' => round($ingresoPromedio, 2),
-
-            // 📦 INVENTARIO
-            'stock_total' => $stockTotal,
-            'stock_bajo_medicamentos' => $stockBajo,
-
-            // 🧪 SANIDAD
-            'alertas_sanitarias' => count($alertasSanidad),
-
-            // 🐷 MATERNIDAD
-            'camadas_activas' => $camadasActivas,
-            'lechones_vivos' => $lechonesVivos,
-            'partos_proximos' => $partosProximos,
-            'destetes_pendientes' => $destetesPendientes,
-
-            'corrales' => $corrales
-        ]);
+        return [
+            'total' => count($alertas),
+            'criticas' => $criticas,
+            'importantes' => $importantes,
+            'informativas' => $informativas,
+            'ultimas' => array_slice($alertas, 0, 12),
+        ];
     }
 
     public function pesosEvolucion()
     {
-        $data = \App\Models\Peso::select(
-            'edad_dias',
-            DB::raw('AVG(peso) as promedio')
-        )
-        ->groupBy('edad_dias')
-        ->orderBy('edad_dias')
-        ->get();
+        if (!Schema::hasTable('pesos') || !$this->hasColumn('pesos', 'peso')) {
+            return response()->json([]);
+        }
 
-        return response()->json($data);
+        if ($this->hasColumn('pesos', 'edad_dias')) {
+            $data = DB::table('pesos')
+                ->select('edad_dias', DB::raw('AVG(peso) as promedio'))
+                ->groupBy('edad_dias')
+                ->orderBy('edad_dias')
+                ->get();
+
+            return response()->json($data);
+        }
+
+        if ($this->hasColumn('pesos', 'fecha') && Schema::hasTable('animales') && $this->hasColumn('animales', 'fecha_nacimiento')) {
+            $data = DB::table('pesos')
+                ->join('animales', 'pesos.animal_id', '=', 'animales.id')
+                ->whereNotNull('animales.fecha_nacimiento')
+                ->selectRaw('DATEDIFF(pesos.fecha, animales.fecha_nacimiento) as edad_dias, AVG(pesos.peso) as promedio')
+                ->groupBy('edad_dias')
+                ->orderBy('edad_dias')
+                ->get();
+
+            return response()->json($data);
+        }
+
+        return response()->json([]);
     }
 
     public function ventasMensuales()
     {
-        $data = \App\Models\Venta::select(
-            DB::raw('MONTH(fecha) as mes'),
-            DB::raw('SUM(total) as total')
-        )
-        ->groupBy('mes')
-        ->orderBy('mes')
-        ->get();
+        if (!Schema::hasTable('ventas') || !$this->hasColumn('ventas', 'fecha') || !$this->hasColumn('ventas', 'total')) {
+            return response()->json([]);
+        }
+
+        $data = DB::table('ventas')
+            ->select(DB::raw('MONTH(fecha) as mes'), DB::raw('SUM(total) as total'))
+            ->groupBy('mes')
+            ->orderBy('mes')
+            ->get();
 
         return response()->json($data);
     }
 
     public function consumoAlimento()
     {
-        $data = DB::table('consumo_alimento')
-            ->select(
-                DB::raw('DATE(fecha) as dia'),
-                DB::raw('SUM(cantidad) as total')
-            )
-            ->groupBy('dia')
-            ->orderBy('dia')
-            ->get();
+        if (Schema::hasTable('consumos_alimentacion') && $this->hasColumn('consumos_alimentacion', 'cantidad_kg')) {
+            $data = DB::table('consumos_alimentacion')
+                ->select(
+                    DB::raw($this->hasColumn('consumos_alimentacion', 'fecha') ? 'DATE(fecha) as dia' : 'DATE(created_at) as dia'),
+                    DB::raw('SUM(cantidad_kg) as total')
+                )
+                ->groupBy('dia')
+                ->orderBy('dia')
+                ->get();
 
-        return response()->json($data);
+            return response()->json($data);
+        }
+
+        if (Schema::hasTable('consumo_alimento') && $this->hasColumn('consumo_alimento', 'cantidad')) {
+            $data = DB::table('consumo_alimento')
+                ->select(DB::raw('DATE(fecha) as dia'), DB::raw('SUM(cantidad) as total'))
+                ->groupBy('dia')
+                ->orderBy('dia')
+                ->get();
+
+            return response()->json($data);
+        }
+
+        return response()->json([]);
     }
 
     public function aplicacionesMedicas()
     {
-        $data = \App\Models\AplicacionMedica::select(
-            DB::raw('DATE(fecha) as dia'),
-            DB::raw('COUNT(*) as total')
-        )
-        ->groupBy('dia')
-        ->orderBy('dia')
-        ->get();
+        if (Schema::hasTable('eventos_sanitarios')) {
+            $fecha = $this->hasColumn('eventos_sanitarios', 'fecha') ? 'fecha' : 'created_at';
 
-        return response()->json($data);
+            if ($this->hasColumn('eventos_sanitarios', $fecha)) {
+                $data = DB::table('eventos_sanitarios')
+                    ->select(DB::raw('DATE(' . $fecha . ') as dia'), DB::raw('COUNT(*) as total'))
+                    ->groupBy('dia')
+                    ->orderBy('dia')
+                    ->get();
+
+                return response()->json($data);
+            }
+        }
+
+        if (Schema::hasTable('aplicaciones_medicas')) {
+            $fecha = $this->hasColumn('aplicaciones_medicas', 'fecha') ? 'fecha' : 'created_at';
+
+            if ($this->hasColumn('aplicaciones_medicas', $fecha)) {
+                $data = DB::table('aplicaciones_medicas')
+                    ->select(DB::raw('DATE(' . $fecha . ') as dia'), DB::raw('COUNT(*) as total'))
+                    ->groupBy('dia')
+                    ->orderBy('dia')
+                    ->get();
+
+                return response()->json($data);
+            }
+        }
+
+        return response()->json([]);
     }
 
     public function ventasPorDia()
     {
+        if (!Schema::hasTable('ventas') || !$this->hasColumn('ventas', 'fecha') || !$this->hasColumn('ventas', 'total')) {
+            return response()->json([]);
+        }
+
         $ventas = DB::table('ventas')
-            ->select(
-                DB::raw('DATE(fecha) as fecha'),
-                DB::raw('SUM(total) as total')
-            )
+            ->select(DB::raw('DATE(fecha) as fecha'), DB::raw('SUM(total) as total'))
             ->groupBy('fecha')
             ->orderBy('fecha', 'asc')
             ->get();
@@ -349,82 +900,135 @@ class DashboardController extends Controller
 
     public function animalesBajoCrecimiento()
     {
-        $animales = Animal::all();
+        return response()->json($this->obtenerAnimalesBajoCrecimiento());
+    }
+
+    private function pesoPromedioPorEtapa()
+    {
+        if (!Schema::hasTable('pesos') || !Schema::hasTable('animales')) {
+            return collect();
+        }
+
+        if (!$this->hasColumn('pesos', 'animal_id') || !$this->hasColumn('pesos', 'peso') || !$this->hasColumn('animales', 'etapa_actual')) {
+            return collect();
+        }
+
+        return DB::table('pesos')
+            ->join('animales', 'pesos.animal_id', '=', 'animales.id')
+            ->select('animales.etapa_actual as etapa', DB::raw('AVG(pesos.peso) as promedio'))
+            ->groupBy('animales.etapa_actual')
+            ->get();
+    }
+
+    private function alertasCrecimientoReciente(): array
+    {
+        if (!Schema::hasTable('animales') || !Schema::hasTable('pesos')) {
+            return [];
+        }
+
+        if (!$this->hasColumn('pesos', 'animal_id') || !$this->hasColumn('pesos', 'peso')) {
+            return [];
+        }
+
+        $animales = DB::table('animales')->select('id', 'identificador_unico')->limit(500)->get();
+        $alertas = [];
+
+        foreach ($animales as $animal) {
+            $pesos = DB::table('pesos')
+                ->where('animal_id', $animal->id)
+                ->orderByDesc($this->hasColumn('pesos', 'fecha') ? 'fecha' : 'id')
+                ->limit(2)
+                ->get();
+
+            if ($pesos->count() === 2 && (float) $pesos[0]->peso <= (float) $pesos[1]->peso) {
+                $alertas[] = [
+                    'animal_id' => $animal->id,
+                    'identificador' => $animal->identificador_unico ?? null,
+                    'mensaje' => 'No hay crecimiento reciente',
+                ];
+            }
+        }
+
+        return $alertas;
+    }
+
+    private function contarAnimalesBajoCrecimiento(): int
+    {
+        return count($this->obtenerAnimalesBajoCrecimiento());
+    }
+
+    private function obtenerAnimalesBajoCrecimiento(): array
+    {
+        if (!Schema::hasTable('animales') || !Schema::hasTable('pesos')) {
+            return [];
+        }
+
+        if (!$this->hasColumn('pesos', 'animal_id') || !$this->hasColumn('pesos', 'peso')) {
+            return [];
+        }
+
+        $animales = DB::table('animales')
+            ->select('id', 'identificador_unico')
+            ->limit(500)
+            ->get();
 
         $resultado = [];
 
         foreach ($animales as $animal) {
+            $pesos = DB::table('pesos')
+                ->where('animal_id', $animal->id)
+                ->orderBy($this->hasColumn('pesos', 'fecha') ? 'fecha' : 'id')
+                ->get();
 
-            $pesos = Peso::where(
-                'animal_id',
-                $animal->id
-            )
-            ->orderBy('fecha')
-            ->get();
-
-            if ($pesos->count() == 0) {
+            if ($pesos->count() === 0) {
                 continue;
             }
 
-            $total = 0;
-
+            $totalCumplimiento = 0;
             $ultimoPeso = null;
             $ultimoIdeal = null;
+            $historialPeso = [];
+            $historialIdeal = [];
 
-            foreach ($pesos as $index => $p) {
-
+            foreach ($pesos as $index => $peso) {
                 $ideal = 8 + ($index * 3);
+                $pesoReal = (float) $peso->peso;
 
-                $total += ($p->peso / $ideal);
+                $totalCumplimiento += ($pesoReal / $ideal);
+                $historialPeso[] = $pesoReal;
+                $historialIdeal[] = $ideal;
 
                 if ($index === $pesos->count() - 1) {
-
-                    $ultimoPeso = $p->peso;
+                    $ultimoPeso = $pesoReal;
                     $ultimoIdeal = $ideal;
                 }
             }
 
-            $cumplimiento = (
-                $total / $pesos->count()
-            ) * 100;
+            $cumplimiento = ($totalCumplimiento / $pesos->count()) * 100;
 
-            if ($cumplimiento < 70) {
-
-                $diferencia = (
-                    ($ultimoPeso - $ultimoIdeal)
-                    / $ultimoIdeal
-                ) * 100;
-
-                $historialPeso = [];
-                $historialIdeal = [];
-
-                foreach ($pesos as $index => $p) {
-
-                    $ideal = 8 + ($index * 3);
-
-                    $historialPeso[] = (float) $p->peso;
-                    $historialIdeal[] = $ideal;
-                }
-
+            if ($cumplimiento < 70 && $ultimoIdeal > 0) {
                 $resultado[] = [
                     'id' => $animal->id,
                     'identificador' => $animal->identificador_unico,
                     'cumplimiento' => round($cumplimiento, 1),
                     'peso' => round($ultimoPeso, 2),
                     'ideal' => round($ultimoIdeal, 2),
-                    'diferencia' => round($diferencia, 1),
+                    'diferencia' => round((($ultimoPeso - $ultimoIdeal) / $ultimoIdeal) * 100, 1),
                     'historial_peso' => $historialPeso,
-                    'historial_ideal' => $historialIdeal
+                    'historial_ideal' => $historialIdeal,
                 ];
             }
         }
 
         usort($resultado, function ($a, $b) {
-            return $a['cumplimiento']
-                <=>
-                $b['cumplimiento'];
+            return $a['cumplimiento'] <=> $b['cumplimiento'];
         });
 
-        return response()->json($resultado);
+        return $resultado;
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        return Schema::hasTable($table) && Schema::hasColumn($table, $column);
     }
 }
