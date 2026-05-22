@@ -1,143 +1,327 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* =========================
+     PORCYS — TEMA CLARO GLOBAL
+     ========================= */
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  color-scheme: light;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
+  --porcys-bg: #f8fafc;
+  --porcys-bg-soft: #f1f5f9;
+  --porcys-surface: #ffffff;
+  --porcys-surface-soft: #f8fafc;
+
+  --porcys-text: #0f172a;
+  --porcys-text-muted: #475569;
+  --porcys-text-soft: #64748b;
+
+  --porcys-border: #e2e8f0;
+  --porcys-border-strong: #cbd5e1;
+
+  --porcys-primary: #2563eb;
+  --porcys-primary-dark: #1d4ed8;
+  --porcys-primary-soft: #dbeafe;
+
+  --porcys-success: #16a34a;
+  --porcys-success-soft: #dcfce7;
+
+  --porcys-warning: #f97316;
+  --porcys-warning-soft: #ffedd5;
+
+  --porcys-danger: #dc2626;
+  --porcys-danger-soft: #fee2e2;
+
+  --porcys-info: #0f766e;
+  --porcys-info-soft: #ccfbf1;
+
+  --porcys-radius-sm: 8px;
+  --porcys-radius-md: 12px;
+  --porcys-radius-lg: 16px;
+  --porcys-radius-xl: 20px;
+
+  --porcys-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --porcys-shadow-md: 0 8px 28px rgba(15, 23, 42, 0.08);
+  --porcys-shadow-lg: 0 16px 42px rgba(15, 23, 42, 0.12);
+
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  font-weight: 400;
+
+  color: var(--porcys-text);
+  background: var(--porcys-bg);
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
+* {
+  box-sizing: border-box;
+}
 
-
-
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+html {
+  margin: 0;
+  padding: 0;
+  background: var(--porcys-bg);
 }
 
 body {
   margin: 0;
+  padding: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--porcys-bg);
+  color: var(--porcys-text);
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+  width: 100%;
+  min-height: 100vh;
+  background: var(--porcys-bg);
+  color: var(--porcys-text);
+  text-align: initial;
 }
 
+/* =========================
+   TIPOGRAFÍA GLOBAL
+   ========================= */
+
 h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--porcys-text);
+  margin-top: 0;
+  font-weight: 800;
+  line-height: 1.15;
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+  font-size: clamp(30px, 4vw, 42px);
+  letter-spacing: -0.04em;
 }
+
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+  font-size: clamp(22px, 2.6vw, 30px);
+  letter-spacing: -0.025em;
 }
+
+h3 {
+  font-size: 20px;
+}
+
+p,
+span,
+label,
+li,
+td,
+th,
+small {
+  color: inherit;
+}
+
 p {
+  margin-top: 0;
+}
+
+a {
+  color: var(--porcys-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--porcys-primary-dark);
+}
+
+/* =========================
+   FORMULARIOS CLAROS
+   ========================= */
+
+input,
+select,
+textarea {
+  color: var(--porcys-text) !important;
+  background: var(--porcys-surface) !important;
+  border: 1px solid var(--porcys-border-strong);
+  border-radius: var(--porcys-radius-md);
+  font-family: inherit;
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #94a3b8;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--porcys-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+}
+
+/* =========================
+   BOTONES BASE
+   ========================= */
+
+button {
+  font-family: inherit;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* =========================
+   TABLAS BASE
+   ========================= */
+
+table {
+  color: var(--porcys-text);
+}
+
+th {
+  color: var(--porcys-text);
+}
+
+td {
+  color: var(--porcys-text-muted);
+}
+
+/* =========================
+   CLASES REUTILIZABLES PORCYS
+   ========================= */
+
+.porcys-page {
+  min-height: 100vh;
+  padding: 24px 32px;
+  background: var(--porcys-bg);
+  color: var(--porcys-text);
+}
+
+.porcys-page-header {
+  margin-bottom: 20px;
+}
+
+.porcys-page-title {
+  margin: 0 0 6px;
+  font-size: clamp(30px, 4vw, 42px);
+  font-weight: 900;
+  color: var(--porcys-text);
+}
+
+.porcys-page-subtitle {
   margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
+  color: var(--porcys-text-muted);
   font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
 }
 
-@keyframes moverLinea {
-  from {
-    transform: scaleX(0);
-    opacity: 0;
-  }
-  to {
-    transform: scaleX(1);
-    opacity: 1;
-  }
+.porcys-card {
+  background: var(--porcys-surface);
+  border: 1px solid var(--porcys-border);
+  border-radius: var(--porcys-radius-xl);
+  box-shadow: var(--porcys-shadow-md);
+  padding: 20px;
+  color: var(--porcys-text);
 }
 
-@keyframes dash {
-  from {
-    stroke-dashoffset: 50;
-    opacity: 0;
-  }
-  to {
-    stroke-dashoffset: 0;
-    opacity: 1;
-  }
+.porcys-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
 }
 
-@keyframes fadeIn {
-  to {
-    opacity: 1;
+.porcys-btn {
+  border: none;
+  border-radius: var(--porcys-radius-md);
+  padding: 10px 14px;
+  background: var(--porcys-primary);
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.porcys-btn:hover {
+  background: var(--porcys-primary-dark);
+}
+
+.porcys-btn-secondary {
+  border: 1px solid var(--porcys-border-strong);
+  border-radius: var(--porcys-radius-md);
+  padding: 10px 14px;
+  background: var(--porcys-surface);
+  color: var(--porcys-text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.porcys-btn-danger {
+  border: none;
+  border-radius: var(--porcys-radius-md);
+  padding: 10px 14px;
+  background: var(--porcys-danger);
+  color: #ffffff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.porcys-muted {
+  color: var(--porcys-text-muted);
+}
+
+.porcys-success {
+  color: #166534;
+  background: var(--porcys-success-soft);
+}
+
+.porcys-warning {
+  color: #9a3412;
+  background: var(--porcys-warning-soft);
+}
+
+.porcys-danger {
+  color: #991b1b;
+  background: var(--porcys-danger-soft);
+}
+
+/* =========================
+   BLINDAJE CONTRA TEMA OSCURO HEREDADO
+   ========================= */
+
+.porcys-page h1,
+.porcys-page h2,
+.porcys-page h3,
+.porcys-page h4,
+.porcys-page h5,
+.porcys-page h6,
+.porcys-card h1,
+.porcys-card h2,
+.porcys-card h3,
+.porcys-card h4 {
+  color: var(--porcys-text) !important;
+}
+
+.porcys-page p,
+.porcys-page li,
+.porcys-page td,
+.porcys-page small {
+  color: var(--porcys-text-muted);
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+
+@media (max-width: 768px) {
+  .porcys-page {
+    padding: 18px 16px;
+  }
+
+  .porcys-card {
+    padding: 16px;
   }
 }

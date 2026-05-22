@@ -550,13 +550,14 @@ export default function Corrales() {
                             onDragStart={() => iniciarArrastre(animal, corral)}
                             title={`Arrastra para mover a otro corral. Estado: ${animal.estado || "N/A"}`}
                             style={{
-                              background: "#0f172a",
-                              color: "#ffffff",
+                              background: "#dbeafe",
+                              color: "#1d4ed8",
+                              border: "1px solid #bfdbfe",
                               padding: "7px 10px",
                               borderRadius: "10px",
                               fontSize: "13px",
                               cursor: "grab",
-                              fontWeight: 700,
+                              fontWeight: 800,
                             }}
                           >
                             🐖 {animal.identificador_unico}

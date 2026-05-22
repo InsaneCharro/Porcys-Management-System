@@ -8,8 +8,35 @@ export default function AnimalesPage() {
   const recargar = () => setReload(!reload);
 
   return (
-    <div style={{ marginLeft: "220px", padding: "20px" }}>
-      <h1>🐷 Gestión de Animales</h1>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f8fafc",
+        color: "#0f172a",
+        padding: "24px 32px",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: "40px",
+          fontWeight: 900,
+          letterSpacing: "-0.04em",
+          margin: "0 0 6px",
+          color: "#0f172a",
+        }}
+      >
+        🐷 Gestión de Animales
+      </h1>
+
+      <p
+        style={{
+          margin: "0 0 22px",
+          color: "#475569",
+          fontSize: "15px",
+        }}
+      >
+        Registro, edición y consulta de animales con trazabilidad individual.
+      </p>
 
       <AnimalForm onCreated={recargar} />
 

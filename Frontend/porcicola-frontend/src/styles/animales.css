@@ -1,54 +1,31 @@
-.estado {
-  padding: 5px 10px;
-  border-radius: 8px;
-  color: white;
-  font-size: 12px;
-}
+/* PORCYS — Animales
+   Este archivo queda neutralizado porque AnimalesTable.jsx y AnimalForm.jsx
+   ahora usan estilos claros propios dentro de los componentes.
+   Se conserva para evitar errores si algún import viejo todavía existe.
+*/
 
-/* 🟢 */
-.estado.activo {
-  background-color: green;
-}
-
-/* 🔴 */
-.estado.muerto {
-  background-color: red;
-}
-
-/* 🟡 */
-.estado.vendido {
-  background-color: orange;
+.animales-page,
+.tabla,
+.filtros {
+  color: #0f172a;
 }
 
 .tabla {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 20px;
+  background: #ffffff;
 }
 
 .tabla th {
-  background: #1e293b;
-  color: white;
-  padding: 10px;
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
 .tabla td {
-  padding: 10px;
-  text-align: center;
+  color: #475569;
+  border-bottom: 1px solid #e2e8f0;
 }
 
-.tabla tr:nth-child(even) {
-  background: #1e293b; /* gris oscuro */
-}
-
-.tabla tr:nth-child(odd) {
-  background: #0f172a; /* más oscuro */
-}
-
-.tabla tr:hover {
-  background: #334155;
-  transition: 0.2s;
-}
-.tabla td {
-  border-bottom: 1px solid #334155;
+.estado {
+  color: #0f172a;
 }

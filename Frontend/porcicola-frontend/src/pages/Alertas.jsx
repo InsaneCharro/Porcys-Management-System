@@ -39,18 +39,12 @@ export default function Alertas() {
 
         mensaje: alerta.mensaje,
 
-        icono:
-          alerta.tipo === "alta_mortalidad"
-            ? "☠️"
-            : "🦠",
+        icono: alerta.tipo === "alta_mortalidad" ? "☠️" : "🦠",
 
         fecha: new Date().toISOString(),
       }));
 
-      setAlertas([
-        ...alertasMortalidad,
-        ...alertasSistema,
-      ]);
+      setAlertas([...alertasMortalidad, ...alertasSistema]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -58,213 +52,202 @@ export default function Alertas() {
     }
   };
 
-  const criticas = alertas.filter(
-    a => a.tipo === "critica"
-  ).length;
+  const criticas = alertas.filter((a) => a.tipo === "critica").length;
+  const importantes = alertas.filter((a) => a.tipo === "importante").length;
+  const informativas = alertas.filter((a) => a.tipo === "informativa").length;
 
-  const importantes = alertas.filter(
-    a => a.tipo === "importante"
-  ).length;
-
-  const informativas = alertas.filter(
-    a => a.tipo === "informativa"
-  ).length;
-
-  const getColor = (tipo) => {
+  const getVisual = (tipo) => {
     switch (tipo) {
       case "critica":
-        return "#f44336";
-
+        return {
+          color: "#dc2626",
+          bg: "#fee2e2",
+          border: "#dc2626",
+          dot: "🔴",
+        };
       case "importante":
-        return "#ff9800";
-
+        return {
+          color: "#f97316",
+          bg: "#ffedd5",
+          border: "#f97316",
+          dot: "🟠",
+        };
       case "informativa":
-        return "#2196f3";
-
+        return {
+          color: "#2563eb",
+          bg: "#dbeafe",
+          border: "#2563eb",
+          dot: "🔵",
+        };
       default:
-        return "#4CAF50";
+        return {
+          color: "#16a34a",
+          bg: "#dcfce7",
+          border: "#16a34a",
+          dot: "🟢",
+        };
     }
   };
 
-  const getBackground = (tipo) => {
-    switch (tipo) {
-      case "critica":
-        return "#330000";
-
-      case "importante":
-        return "#332200";
-
-      case "informativa":
-        return "#001f33";
-
-      default:
-        return "#1e1e1e";
-    }
+  const styles = {
+    page: {
+      padding: "24px 32px",
+      background: "#f8fafc",
+      minHeight: "100vh",
+      color: "#0f172a",
+    },
+    title: {
+      fontSize: "40px",
+      fontWeight: 900,
+      letterSpacing: "-0.04em",
+      margin: "0 0 6px",
+      color: "#0f172a",
+    },
+    subtitle: {
+      color: "#475569",
+      margin: "0 0 24px",
+      fontSize: "15px",
+    },
+    kpiGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+      gap: "16px",
+      marginBottom: "28px",
+    },
+    kpi: (visual) => ({
+      background: "#ffffff",
+      padding: "22px",
+      borderRadius: "20px",
+      border: "1px solid #e2e8f0",
+      borderLeft: `6px solid ${visual.border}`,
+      boxShadow: "0 8px 28px rgba(15, 23, 42, 0.08)",
+    }),
+    kpiTitle: {
+      margin: "0 0 10px",
+      color: "#0f172a",
+      fontWeight: 900,
+      fontSize: "19px",
+    },
+    kpiNumber: {
+      margin: 0,
+      color: "#0f172a",
+      fontSize: "36px",
+      fontWeight: 900,
+    },
+    empty: {
+      background: "#ffffff",
+      padding: "28px",
+      borderRadius: "20px",
+      textAlign: "center",
+      border: "1px solid #e2e8f0",
+      boxShadow: "0 8px 28px rgba(15, 23, 42, 0.08)",
+      color: "#0f172a",
+    },
+    alertList: {
+      display: "grid",
+      gap: "16px",
+    },
+    alertCard: (visual) => ({
+      background: "#ffffff",
+      borderLeft: `6px solid ${visual.border}`,
+      borderTop: "1px solid #e2e8f0",
+      borderRight: "1px solid #e2e8f0",
+      borderBottom: "1px solid #e2e8f0",
+      padding: "22px",
+      borderRadius: "20px",
+      boxShadow: "0 8px 28px rgba(15, 23, 42, 0.08)",
+      color: "#0f172a",
+    }),
+    alertTitle: {
+      margin: "0 0 10px",
+      color: "#0f172a",
+      fontWeight: 900,
+      fontSize: "22px",
+    },
+    alertText: {
+      fontSize: "17px",
+      color: "#475569",
+      margin: 0,
+      lineHeight: 1.55,
+    },
+    dateBadge: (visual) => ({
+      padding: "9px 13px",
+      borderRadius: "12px",
+      background: visual.bg,
+      color: visual.color,
+      fontSize: "14px",
+      fontWeight: 900,
+      border: `1px solid ${visual.border}`,
+      whiteSpace: "nowrap",
+    }),
   };
 
   if (loading) {
     return (
-      <div
-        style={{
-          padding: "30px",
-          color: "white",
-          background: "#121212",
-          minHeight: "100vh"
-        }}
-      >
-        <h2>Cargando alertas...</h2>
+      <div style={styles.page}>
+        <h2 style={{ color: "#0f172a" }}>Cargando alertas...</h2>
+        <p style={{ color: "#64748b" }}>Consultando centro de alertas.</p>
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        padding: "30px",
-        background: "#121212",
-        minHeight: "100vh",
-        color: "white"
-      }}
-    >
-      {/* HEADER */}
-      <div style={{ marginBottom: "30px" }}>
-        <h1
-          style={{
-            fontSize: "42px",
-            marginBottom: "10px"
-          }}
-        >
-          🚨 Centro de Alertas
-        </h1>
+    <div style={styles.page}>
+      <h1 style={styles.title}>🚨 Centro de Alertas</h1>
+      <p style={styles.subtitle}>Monitoreo inteligente de operación porcícola.</p>
 
-        <p style={{ color: "#aaa" }}>
-          Monitoreo inteligente de operación porcícola
-        </p>
-      </div>
-
-      {/* KPIs */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: "20px",
-          marginBottom: "35px"
-        }}
-      >
-        <div
-          style={{
-            background: "#1e1e1e",
-            padding: "25px",
-            borderRadius: "16px",
-            borderLeft: "6px solid #f44336"
-          }}
-        >
-          <h3>🔴 Críticas</h3>
-          <h1>{criticas}</h1>
+      <div style={styles.kpiGrid}>
+        <div style={styles.kpi(getVisual("critica"))}>
+          <h3 style={styles.kpiTitle}>🔴 Críticas</h3>
+          <h1 style={styles.kpiNumber}>{criticas}</h1>
         </div>
 
-        <div
-          style={{
-            background: "#1e1e1e",
-            padding: "25px",
-            borderRadius: "16px",
-            borderLeft: "6px solid #ff9800"
-          }}
-        >
-          <h3>🟠 Importantes</h3>
-          <h1>{importantes}</h1>
+        <div style={styles.kpi(getVisual("importante"))}>
+          <h3 style={styles.kpiTitle}>🟠 Importantes</h3>
+          <h1 style={styles.kpiNumber}>{importantes}</h1>
         </div>
 
-        <div
-          style={{
-            background: "#1e1e1e",
-            padding: "25px",
-            borderRadius: "16px",
-            borderLeft: "6px solid #2196f3"
-          }}
-        >
-          <h3>🔵 Informativas</h3>
-          <h1>{informativas}</h1>
+        <div style={styles.kpi(getVisual("informativa"))}>
+          <h3 style={styles.kpiTitle}>🔵 Informativas</h3>
+          <h1 style={styles.kpiNumber}>{informativas}</h1>
         </div>
       </div>
 
-      {/* ALERTAS */}
       {alertas.length === 0 ? (
-        <div
-          style={{
-            background: "#1e1e1e",
-            padding: "30px",
-            borderRadius: "16px",
-            textAlign: "center"
-          }}
-        >
-          <h2>✅ No hay alertas activas</h2>
+        <div style={styles.empty}>
+          <h2 style={{ margin: 0, color: "#0f172a" }}>✅ No hay alertas activas</h2>
         </div>
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gap: "20px"
-          }}
-        >
-          {alertas.map((alerta, index) => (
-            <div
-              key={index}
-              style={{
-                background: getBackground(alerta.tipo),
-                borderLeft: `6px solid ${getColor(alerta.tipo)}`,
-                padding: "25px",
-                borderRadius: "16px",
-                boxShadow:
-                  "0 0 12px rgba(0,0,0,0.35)"
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent:
-                    "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: "15px"
-                }}
-              >
-                <div>
-                  <h2
-                    style={{
-                      marginBottom: "10px"
-                    }}
-                  >
-                    {alerta.icono} {alerta.titulo}
-                  </h2>
+        <div style={styles.alertList}>
+          {alertas.map((alerta, index) => {
+            const visual = getVisual(alerta.tipo);
 
-                  <p
-                    style={{
-                      fontSize: "18px",
-                      color: "#ddd"
-                    }}
-                  >
-                    {alerta.mensaje}
-                  </p>
-                </div>
-
+            return (
+              <div key={index} style={styles.alertCard(visual)}>
                 <div
                   style={{
-                    padding: "10px 16px",
-                    borderRadius: "12px",
-                    background: "#111",
-                    color: "#ccc",
-                    fontSize: "14px"
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    flexWrap: "wrap",
+                    gap: "14px",
                   }}
                 >
-                  {new Date(
-                    alerta.fecha
-                  ).toLocaleDateString("es-MX")}
+                  <div style={{ flex: "1 1 260px" }}>
+                    <h2 style={styles.alertTitle}>
+                      {alerta.icono} {alerta.titulo}
+                    </h2>
+
+                    <p style={styles.alertText}>{alerta.mensaje}</p>
+                  </div>
+
+                  <div style={styles.dateBadge(visual)}>
+                    {new Date(alerta.fecha).toLocaleDateString("es-MX")}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

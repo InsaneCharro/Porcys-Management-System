@@ -70,7 +70,7 @@ function KpiCard({ icon, title, value, subtitle, onClick, danger = false }) {
         <h4>{title}</h4>
         <h2>{value}</h2>
         {subtitle ? (
-          <p style={{ color: "#aaa", margin: "4px 0 0", fontSize: "13px" }}>
+          <p style={{ color: "#64748b", margin: "4px 0 0", fontSize: "13px" }}>
             {subtitle}
           </p>
         ) : null}
@@ -80,7 +80,7 @@ function KpiCard({ icon, title, value, subtitle, onClick, danger = false }) {
 }
 
 function EmptyState({ text = "Sin datos disponibles" }) {
-  return <p style={{ color: "#aaa", margin: 0 }}>{text}</p>;
+  return <p style={{ color: "#64748b", margin: 0 }}>{text}</p>;
 }
 
 function AlertItem({ alerta, index }) {
@@ -112,7 +112,7 @@ function AlertItem({ alerta, index }) {
       }}
     >
       <strong style={{ textTransform: "capitalize" }}>{readable(nivel)}</strong>
-      <p style={{ margin: "6px 0 0", color: "#ddd" }}>
+      <p style={{ margin: "6px 0 0", color: "#475569" }}>
         {alerta?.mensaje || "Alerta sin descripción"}
       </p>
     </div>
@@ -343,18 +343,18 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="container">
+      <div className="dashboard-page container">
         <h2>Cargando dashboard gerencial...</h2>
-        <p style={{ color: "#aaa" }}>Consultando operación porcícola en tiempo real.</p>
+        <p style={{ color: "#64748b" }}>Consultando operación porcícola en tiempo real.</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="container">
-        <h2 style={{ color: "#ff6b6b" }}>No se pudo cargar el Dashboard</h2>
-        <p style={{ color: "#ddd" }}>{error}</p>
+      <div className="dashboard-page container">
+        <h2 style={{ color: "#dc2626" }}>No se pudo cargar el Dashboard</h2>
+        <p style={{ color: "#475569" }}>{error}</p>
         <button
           onClick={() => window.location.reload()}
           style={{
@@ -371,7 +371,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="container">
+    <div className="dashboard-page container">
       <div
         style={{
           display: "flex",
@@ -391,10 +391,13 @@ export default function Dashboard() {
 
         <div
           style={{
-            background: "#1e1e1e",
+            background: "#ffffff",
             padding: "12px 18px",
-            borderRadius: "10px",
-            color: "#ccc"
+            borderRadius: "14px",
+            color: "#475569",
+            border: "1px solid #e2e8f0",
+            boxShadow: "0 6px 20px rgba(15, 23, 42, 0.07)",
+            fontWeight: 800
           }}
         >
           📅 {new Date().toLocaleDateString("es-MX")}

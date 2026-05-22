@@ -5,7 +5,7 @@ import axios from "axios";
 
 import {
   aplicarMedicamento,
-  obtenerMedicamentos
+  obtenerMedicamentos,
 } from "../services/sanidadService";
 
 import {
@@ -15,7 +15,7 @@ import {
   LinearScale,
   CategoryScale,
   Tooltip,
-  Legend
+  Legend,
 } from "chart.js";
 
 import { Line } from "react-chartjs-2";
@@ -29,1102 +29,907 @@ ChartJS.register(
   Legend
 );
 
-export default function AnimalDetalle() {
+const API = "http://127.0.0.1:8000/api";
 
+export default function AnimalDetalle() {
   const { id } = useParams();
 
-  // =========================
-  // ESTADOS
-  // =========================
-
   const [animal, setAnimal] = useState(null);
-
   const [pesos, setPesos] = useState([]);
-
   const [nuevoPeso, setNuevoPeso] = useState("");
-
   const [fecha, setFecha] = useState("");
 
-  // SANIDAD
   const [mostrarModal, setMostrarModal] = useState(false);
-
   const [medicamentos, setMedicamentos] = useState([]);
-
   const [medicamentoId, setMedicamentoId] = useState("");
-
   const [dosis, setDosis] = useState("");
-
   const [stock, setStock] = useState(0);
-
   const [eventosSanitarios, setEventosSanitarios] = useState([]);
 
-  // CORRALES
   const [corrales, setCorrales] = useState([]);
-
   const [corralId, setCorralId] = useState("");
 
   const [mostrarModalMuerte, setMostrarModalMuerte] = useState(false);
-
-  const [causaMuerte, setCausaMuerte] = useState("");
-
+  const [causaMuerte, setCausaMuerte] = useState("enfermedad");
   const [observacionesMuerte, setObservacionesMuerte] = useState("");
-
   const [fechaMuerte, setFechaMuerte] = useState(
     new Date().toISOString().split("T")[0]
   );
-
   const [pesoMuerte, setPesoMuerte] = useState("");
-
   const [historialMuertes, setHistorialMuertes] = useState([]);
 
-  // =========================
-  // LOAD DATA
-  // =========================
-
   useEffect(() => {
-
-    axios.get(`http://127.0.0.1:8000/api/animales/${id}`)
-      .then(res => setAnimal(res.data))
-      .catch(err => console.error(err));
-
-    axios.get(`http://127.0.0.1:8000/api/pesos/${id}`)
-      .then(res => setPesos(res.data))
-      .catch(err => console.error(err));
-
-    obtenerMedicamentos()
-      .then(setMedicamentos);
-
-    axios.get(`http://127.0.0.1:8000/api/medicamentos/historial/${id}`)
-      .then(res => setEventosSanitarios(res.data))
-      .catch(err => console.error(err));
-
-    axios.get("http://127.0.0.1:8000/api/corrales")
-      .then(res => setCorrales(res.data))
-      .catch(err => console.error(err));
-
-    axios.get(`http://127.0.0.1:8000/api/animales/${id}/muertes`)
-      .then(res => setHistorialMuertes(res.data))
-      .catch(err => console.error(err));
-
+    cargarDatos();
   }, [id]);
 
-  // =========================
-  // STOCK MEDICAMENTO
-  // =========================
-
   useEffect(() => {
-
-    const med = medicamentos.find(
-      m => m.id == medicamentoId
-    );
-
-    setStock(
-      med ? Number(med.stock) : 0
-    );
-
+    const med = medicamentos.find((m) => m.id == medicamentoId);
+    setStock(med ? Number(med.stock) : 0);
   }, [medicamentoId, medicamentos]);
 
-  if (!animal) {
-    return <h2>Cargando...</h2>;
-  }
+  const cargarDatos = async () => {
+    try {
+      const [
+        animalRes,
+        pesosRes,
+        eventosRes,
+        corralesRes,
+        muertesRes,
+      ] = await Promise.all([
+        axios.get(`${API}/animales/${id}`),
+        axios.get(`${API}/pesos/${id}`),
+        axios.get(`${API}/medicamentos/historial/${id}`),
+        axios.get(`${API}/corrales`),
+        axios.get(`${API}/animales/${id}/muertes`),
+      ]);
 
-  // =========================
-  // HISTORIAL ORDENADO
-  // =========================
+      setAnimal(animalRes.data);
+      setPesos(pesosRes.data || []);
+      setEventosSanitarios(eventosRes.data || []);
+      setCorrales(corralesRes.data || []);
+      setHistorialMuertes(muertesRes.data || []);
+
+      obtenerMedicamentos().then(setMedicamentos);
+    } catch (err) {
+      console.error(err.response?.data || err);
+      alert("Error cargando detalle del animal.");
+    }
+  };
+
+  const normalizarTexto = (valor) => {
+    return String(valor ?? "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[_-]/g, " ")
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  };
+
+  const animalBloqueado = () => {
+    const estado = normalizarTexto(animal?.estado);
+
+    return [
+      "muerto",
+      "muerta",
+      "vendido",
+      "vendida",
+      "descartado",
+      "descartada",
+      "baja",
+      "baja sanitaria",
+      "sacrificado",
+      "sacrificada",
+    ].includes(estado);
+  };
+
+  const formatoMoneda = (valor) => {
+    return Number(valor || 0).toLocaleString("es-MX", {
+      style: "currency",
+      currency: "MXN",
+    });
+  };
 
   const ordenados = [...pesos].sort(
     (a, b) => new Date(a.fecha) - new Date(b.fecha)
   );
 
-  // =========================
-  // PREDICCIÓN
-  // =========================
-
   let prediccion = [];
 
   if (ordenados.length >= 2) {
-
     const ultimo = ordenados[ordenados.length - 1];
-
     const penultimo = ordenados[ordenados.length - 2];
-
-    const diferencia =
-      ultimo.peso - penultimo.peso;
+    const diferencia = Number(ultimo.peso) - Number(penultimo.peso);
 
     for (let i = 1; i <= 4; i++) {
-
-      prediccion.push(
-        Number(ultimo.peso) + (diferencia * i)
-      );
-
+      prediccion.push(Number(ultimo.peso) + diferencia * i);
     }
-
   }
 
-  // =========================
-  // DATOS GRÁFICA
-  // =========================
-
   const labels = [
-    ...ordenados.map(p => p.fecha),
-    ...prediccion.map((_, i) => `Pred ${i + 1}`)
+    ...ordenados.map((p) => p.fecha),
+    ...prediccion.map((_, i) => `Pred ${i + 1}`),
   ];
 
-  const dataPeso = [
-    ...ordenados.map(p => p.peso),
-    ...prediccion
-  ];
+  const dataPeso = [...ordenados.map((p) => p.peso), ...prediccion];
 
-  const colores = [
-    ...ordenados.map(() => "blue"),
-    ...prediccion.map(() => "orange")
-  ];
-
-  const dataIdeal = ordenados.map(
-    (_, i) => 8 + (i * 3)
-  );
-
-  const ultimoIdeal =
-    dataIdeal[dataIdeal.length - 1] || 0;
+  const dataIdeal = ordenados.map((_, i) => 8 + i * 3);
+  const ultimoIdeal = dataIdeal[dataIdeal.length - 1] || 0;
 
   const dataIdealExtendido = [
     ...dataIdeal,
-    ...prediccion.map(
-      (_, i) => ultimoIdeal + ((i + 1) * 3)
-    )
+    ...prediccion.map((_, i) => ultimoIdeal + (i + 1) * 3),
   ];
-
-  // =========================
-  // CUMPLIMIENTO
-  // =========================
 
   let cumplimiento = 0;
 
   if (ordenados.length > 0) {
+    const total = ordenados.reduce((acc, p, index) => {
+      const ideal = 8 + index * 3;
+      return acc + Number(p.peso) / ideal;
+    }, 0);
 
-    const total = ordenados.reduce(
-      (acc, p, index) => {
-
-        const ideal = 8 + (index * 3);
-
-        return acc + (p.peso / ideal);
-
-      },
-      0
-    );
-
-    cumplimiento =
-      (total / ordenados.length) * 100;
-
+    cumplimiento = (total / ordenados.length) * 100;
   }
 
   let estadoCrecimiento = "Sin datos";
 
   if (ordenados.length > 0) {
-
     if (cumplimiento >= 90) {
       estadoCrecimiento = "Excelente";
-    }
-    else if (cumplimiento >= 70) {
+    } else if (cumplimiento >= 70) {
       estadoCrecimiento = "Regular";
-    }
-    else {
+    } else {
       estadoCrecimiento = "Bajo crecimiento";
     }
-
   }
 
-  // =========================
-  // CHART
-  // =========================
-
   const chartData = {
-
     labels,
-
     datasets: [
-
       {
         label: "Peso real",
         data: dataPeso,
         tension: 0.3,
-        borderColor: "blue",
-        pointBackgroundColor: colores
+        borderColor: "#2563eb",
+        pointBackgroundColor: [
+          ...ordenados.map(() => "#2563eb"),
+          ...prediccion.map(() => "#f97316"),
+        ],
       },
-
       {
         label: "Peso ideal",
         data: dataIdealExtendido,
-        borderColor: "green"
-      }
-
-    ]
-
+        borderColor: "#16a34a",
+      },
+    ],
   };
 
-  // =========================
-  // REGISTRAR PESO
-  // =========================
+  const chartOptions = {
+    responsive: true,
+    plugins: {
+      legend: {
+        labels: {
+          color: "#0f172a",
+        },
+      },
+    },
+    scales: {
+      x: {
+        ticks: {
+          color: "#475569",
+        },
+        grid: {
+          color: "#e2e8f0",
+        },
+      },
+      y: {
+        ticks: {
+          color: "#475569",
+        },
+        grid: {
+          color: "#e2e8f0",
+        },
+      },
+    },
+  };
 
-  const handleRegistrarPeso = () => {
-
+  const handleRegistrarPeso = async () => {
     if (!nuevoPeso || !fecha) {
-      return alert("Completa todos los campos");
+      return alert("Completa todos los campos.");
     }
-
-    registrarPeso({
-      animal_id: id,
-      peso: nuevoPeso,
-      fecha
-    })
-
-    .then(() => {
-
-      alert("Peso registrado");
-
-      setNuevoPeso("");
-
-      setFecha("");
-
-      axios.get(`http://127.0.0.1:8000/api/pesos/${id}`)
-        .then(res => setPesos(res.data));
-
-    });
-
-  };
-
-  // =========================
-  // SANIDAD
-  // =========================
-
-  const enviarSanidad = async () => {
 
     try {
-
-      await aplicarMedicamento({
-
-        animal_id: animal.id,
-
-        medicamento_id: medicamentoId,
-
-        dosis: Number(dosis),
-
-        fecha: new Date()
-          .toISOString()
-          .split("T")[0]
-
+      await registrarPeso({
+        animal_id: id,
+        peso: nuevoPeso,
+        fecha,
       });
 
-      alert("✅ Medicamento aplicado");
+      alert("Peso registrado.");
+
+      setNuevoPeso("");
+      setFecha("");
+
+      const res = await axios.get(`${API}/pesos/${id}`);
+      setPesos(res.data || []);
+    } catch (err) {
+      console.error(err.response?.data || err);
+      alert(err.response?.data?.message || "Error registrando peso.");
+    }
+  };
+
+  const enviarSanidad = async () => {
+    try {
+      await aplicarMedicamento({
+        animal_id: animal.id,
+        medicamento_id: Number(medicamentoId),
+        dosis: String(dosis),
+        fecha: new Date().toISOString().split("T")[0],
+      });
+
+      alert("Medicamento aplicado.");
 
       setMostrarModal(false);
-
       setDosis("");
-
       setMedicamentoId("");
 
-      axios.get(`http://127.0.0.1:8000/api/medicamentos/historial/${id}`)
-        .then(res => setEventosSanitarios(res.data));
+      const eventosRes = await axios.get(`${API}/medicamentos/historial/${id}`);
+      setEventosSanitarios(eventosRes.data || []);
 
-      obtenerMedicamentos()
-        .then(setMedicamentos);
-
+      obtenerMedicamentos().then(setMedicamentos);
+    } catch (err) {
+      console.error(err.response?.data || err);
+      alert(err.message || "Error al aplicar medicamento.");
     }
-
-    catch (err) {
-      console.error(err);
-
-      console.log(err.response?.data);
-
-      alert(
-        JSON.stringify(err.response?.data) ||
-        "Error al aplicar medicamento"
-      );
-    }
-
   };
 
   const registrarMuerte = async () => {
-
     try {
-
-      const res = await fetch(
-        `http://127.0.0.1:8000/api/animales/${animal.id}/muerte`,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type": "application/json"
-          },
-
-          body: JSON.stringify({
-            fecha: fechaMuerte,
-            causa: causaMuerte,
-            observaciones: observacionesMuerte,
-            peso: pesoMuerte || null
-          })
-        }
-      );
+      const res = await fetch(`${API}/animales/${animal.id}/muerte`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fecha: fechaMuerte,
+          causa: causaMuerte,
+          observaciones: observacionesMuerte,
+          peso: pesoMuerte || null,
+        }),
+      });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(
-          data.message || "Error al registrar baja"
-        );
+        throw new Error(data.message || data.error || "Error al registrar baja.");
       }
 
-      alert("☠️ Baja registrada correctamente");
+      alert("Baja registrada correctamente.");
 
       setMostrarModalMuerte(false);
+      setObservacionesMuerte("");
+      setPesoMuerte("");
+      setCausaMuerte("enfermedad");
 
-      axios
-        .get(`http://127.0.0.1:8000/api/animales/${id}/muertes`)
-        .then(res => setHistorialMuertes(res.data));
-
-      axios
-        .get(`http://127.0.0.1:8000/api/animales/${id}`)
-        .then(res => setAnimal(res.data));
-
+      cargarDatos();
     } catch (err) {
-
       console.error(err);
-
       alert(err.message);
-
     }
-
   };
 
-  // =========================
-  // EVENTOS ORDENADOS
-  // =========================
+  const asignarCorral = async () => {
+    if (!corralId) {
+      alert("Selecciona un corral.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/animales/${animal.id}/asignar-corral`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          corral_id: corralId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "No se pudo asignar el corral.");
+      }
+
+      alert("Animal asignado al corral.");
+      setCorralId("");
+      cargarDatos();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
   const eventosOrdenados = [...eventosSanitarios].sort(
     (a, b) => new Date(b.fecha) - new Date(a.fecha)
   );
 
-  // =========================
-  // RETURN
-  // =========================
+  const styles = {
+    page: {
+      minHeight: "100vh",
+      background: "#f8fafc",
+      color: "#0f172a",
+      padding: "24px 32px",
+    },
+    title: {
+      fontSize: "40px",
+      fontWeight: 900,
+      letterSpacing: "-0.04em",
+      margin: "0 0 6px",
+      color: "#0f172a",
+    },
+    subtitle: {
+      margin: "0 0 22px",
+      color: "#475569",
+      fontSize: "15px",
+    },
+    card: {
+      background: "#ffffff",
+      border: "1px solid #e2e8f0",
+      borderRadius: "20px",
+      boxShadow: "0 8px 28px rgba(15, 23, 42, 0.08)",
+      padding: "22px",
+      marginBottom: "22px",
+      color: "#0f172a",
+    },
+    sectionTitle: {
+      margin: "0 0 16px",
+      fontSize: "24px",
+      fontWeight: 900,
+      color: "#0f172a",
+    },
+    text: {
+      margin: "9px 0",
+      color: "#475569",
+      fontSize: "15px",
+    },
+    strong: {
+      color: "#0f172a",
+      fontWeight: 900,
+    },
+    grid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+      gap: "12px",
+    },
+    table: {
+      width: "100%",
+      borderCollapse: "collapse",
+      background: "#ffffff",
+      border: "1px solid #e2e8f0",
+      borderRadius: "16px",
+      overflow: "hidden",
+    },
+    th: {
+      background: "#e2e8f0",
+      color: "#0f172a",
+      padding: "12px",
+      textAlign: "left",
+      fontWeight: 900,
+    },
+    td: {
+      padding: "12px",
+      color: "#475569",
+      borderBottom: "1px solid #e2e8f0",
+      fontWeight: 700,
+    },
+    input: {
+      padding: "10px 12px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "12px",
+      background: "#ffffff",
+      color: "#0f172a",
+      minWidth: "180px",
+    },
+    button: {
+      padding: "10px 14px",
+      border: "none",
+      borderRadius: "12px",
+      background: "#2563eb",
+      color: "#ffffff",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+    secondaryButton: {
+      padding: "10px 14px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "12px",
+      background: "#ffffff",
+      color: "#0f172a",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+    dangerButton: {
+      padding: "10px 14px",
+      border: "none",
+      borderRadius: "12px",
+      background: "#dc2626",
+      color: "#ffffff",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+    alertDanger: {
+      background: "#fee2e2",
+      border: "1px solid #fecaca",
+      color: "#991b1b",
+      padding: "16px",
+      borderRadius: "16px",
+      marginBottom: "22px",
+      fontWeight: 900,
+    },
+    alertWarning: {
+      background: "#ffedd5",
+      border: "1px solid #fed7aa",
+      color: "#9a3412",
+      padding: "12px 14px",
+      borderRadius: "14px",
+      marginBottom: "16px",
+      fontWeight: 900,
+    },
+    eventCard: {
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      borderLeft: "5px solid #f97316",
+      padding: "14px",
+      borderRadius: "14px",
+      marginBottom: "12px",
+      color: "#0f172a",
+    },
+    bajaCard: {
+      background: "#fff7ed",
+      border: "1px solid #fed7aa",
+      borderLeft: "5px solid #dc2626",
+      padding: "14px",
+      borderRadius: "14px",
+      marginBottom: "12px",
+      color: "#0f172a",
+    },
+    modalOverlay: {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      width: "100vw",
+      height: "100vh",
+      background: "rgba(15, 23, 42, 0.45)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 9999,
+      padding: "20px",
+    },
+    modal: {
+      background: "#ffffff",
+      padding: "26px",
+      borderRadius: "20px",
+      width: "520px",
+      maxWidth: "95%",
+      boxShadow: "0 20px 60px rgba(15, 23, 42, 0.25)",
+      border: "1px solid #e2e8f0",
+      color: "#0f172a",
+    },
+  };
+
+  if (!animal) {
+    return (
+      <div style={styles.page}>
+        <h2 style={{ color: "#0f172a" }}>Cargando detalle del animal...</h2>
+        <p style={{ color: "#64748b" }}>Consultando trazabilidad individual.</p>
+      </div>
+    );
+  }
+
+  const bloqueado = animalBloqueado();
 
   return (
-
-    <div className="container">
-
-      {/* ALERTA STOCK */}
-      {medicamentos.some(m => m.stock <= 10) && (
-
-        <div
-          style={{
-            background: "#3a0000",
-            padding: "12px",
-            marginBottom: "20px",
-            borderRadius: "8px"
-          }}
-        >
-          ⚠️ Hay medicamentos con stock bajo
+    <div style={styles.page}>
+      {medicamentos.some((m) => Number(m.stock || 0) <= 10) && (
+        <div style={styles.alertWarning}>
+          ⚠️ Hay medicamentos con stock bajo.
         </div>
-
       )}
 
-      {/* HEADER */}
-      <h1>
-        🐷 Detalle del Animal #{animal.id}
-      </h1>
+      <h1 style={styles.title}>🐷 Detalle del Animal #{animal.id}</h1>
+      <p style={styles.subtitle}>
+        Trazabilidad individual: datos generales, peso, sanidad, bajas y ubicación.
+      </p>
 
-      {animal.estado === "muerto" && (
-        <div
-          style={{
-            background: "#4a0000",
-            border: "2px solid crimson",
-            color: "white",
-            padding: "18px",
-            borderRadius: "14px",
-            marginBottom: "25px",
-            textAlign: "center",
-            fontWeight: "bold",
-            fontSize: "20px",
-            boxShadow: "0 0 15px rgba(220,20,60,0.3)"
-          }}
-        >
-          ☠️ ANIMAL DADO DE BAJA
-
-          <div
-            style={{
-              fontSize: "14px",
-              marginTop: "8px",
-              color: "#ffb3b3"
-            }}
-          >
-            No se permiten operaciones productivas sobre este animal
+      {bloqueado && (
+        <div style={styles.alertDanger}>
+          ☠️ ANIMAL BLOQUEADO OPERATIVAMENTE
+          <div style={{ fontSize: "14px", marginTop: "6px", color: "#991b1b" }}>
+            No se permiten operaciones productivas sobre animales vendidos, muertos,
+            descartados o dados de baja.
           </div>
         </div>
       )}
 
-      {/* INFO */}
-      <div className="card">
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>Información general</h2>
 
-        <p>
-          <strong>Identificador:</strong>{" "}
-          {animal.identificador_unico}
-        </p>
+        <div style={styles.grid}>
+          <p style={styles.text}>
+            <strong style={styles.strong}>Identificador:</strong>{" "}
+            {animal.identificador_unico || "N/A"}
+          </p>
 
-        <p>
-          <strong>Sexo:</strong>{" "}
-          {animal.sexo}
-        </p>
+          <p style={styles.text}>
+            <strong style={styles.strong}>Sexo:</strong> {animal.sexo || "N/A"}
+          </p>
 
-        <p>
-          <strong>Etapa:</strong>{" "}
-          {animal.etapa_actual}
-        </p>
+          <p style={styles.text}>
+            <strong style={styles.strong}>Etapa:</strong>{" "}
+            {animal.etapa_actual || "N/A"}
+          </p>
 
-        <p>
-          <strong>Estado:</strong>{" "}
-          {animal.estado}
-        </p>
+          <p style={styles.text}>
+            <strong style={styles.strong}>Estado:</strong>{" "}
+            {animal.estado || "N/A"}
+          </p>
 
-        <p>
-          <strong>Corral:</strong>{" "}
-          {animal.corral_id || "Sin asignar"}
-        </p>
+          <p style={styles.text}>
+            <strong style={styles.strong}>Corral:</strong>{" "}
+            {animal.corral_id || "Sin asignar"}
+          </p>
 
-        <p>
-          <strong>Crecimiento:</strong>{" "}
-          {estadoCrecimiento}
-        </p>
-
+          <p style={styles.text}>
+            <strong style={styles.strong}>Crecimiento:</strong>{" "}
+            {estadoCrecimiento}
+          </p>
+        </div>
       </div>
 
-      {/* PESOS */}
-      <div className="section">
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>📊 Historial de peso</h2>
 
-        <h2>
-          📊 Historial de peso
-        </h2>
-
-        <table className="tabla">
-
-          <tbody>
-
-            {pesos.map(p => (
-
-              <tr key={p.id}>
-
-                <td>{p.fecha}</td>
-
-                <td>{p.peso} kg</td>
-
+        {pesos.length === 0 ? (
+          <p style={styles.text}>No hay registros de peso.</p>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Fecha</th>
+                <th style={styles.th}>Peso</th>
               </tr>
-
-            ))}
-
-          </tbody>
-
-        </table>
-
+            </thead>
+            <tbody>
+              {pesos.map((p) => (
+                <tr key={p.id}>
+                  <td style={styles.td}>{p.fecha}</td>
+                  <td style={styles.td}>{p.peso} kg</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
-      {/* SANIDAD */}
-      <div className="section">
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>💊 Historial sanitario</h2>
 
-        <h2>
-          💊 Historial sanitario
-        </h2>
-
-        <p
-          style={{
-            fontSize: "12px",
-            color: "#aaa"
-          }}
-        >
+        <p style={{ ...styles.text, fontSize: "13px" }}>
           Total de eventos: {eventosSanitarios.length}
         </p>
 
         {eventosSanitarios.length > 5 && (
-
-          <div
-            style={{
-              background: "#332200",
-              padding: "10px",
-              marginBottom: "10px",
-              borderRadius: "5px"
-            }}
-          >
-            ⚠️ Alta carga sanitaria
-          </div>
-
+          <div style={styles.alertWarning}>⚠️ Alta carga sanitaria</div>
         )}
 
         {eventosSanitarios.length === 0 ? (
-
-          <p>No hay registros</p>
-
+          <p style={styles.text}>No hay registros.</p>
         ) : (
-
-          eventosOrdenados.map(ev => (
-
-            <div
-              key={ev.id}
-              style={{
-                background: "#1e1e1e",
-                padding: "12px",
-                marginBottom: "10px",
-                borderRadius: "8px",
-                borderLeft: "5px solid orange"
-              }}
-            >
-
-              <div
-                style={{
-                  fontWeight: "bold"
-                }}
-              >
+          eventosOrdenados.map((ev) => (
+            <div key={ev.id} style={styles.eventCard}>
+              <div style={{ fontWeight: 900, color: "#0f172a" }}>
                 💊 MEDICAMENTO
               </div>
 
-              <div>
-                {ev.medicamento}
-              </div>
+              <div style={styles.text}>{ev.medicamento}</div>
 
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "#aaa"
-                }}
-              >
+              <div style={{ ...styles.text, fontSize: "13px" }}>
                 Dosis: {ev.dosis}
               </div>
 
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "#aaa"
-                }}
-              >
+              <div style={{ ...styles.text, fontSize: "13px" }}>
                 Fecha: {ev.fecha}
               </div>
-
             </div>
-
           ))
-
         )}
-
       </div>
 
-      {/* NUEVO BLOQUE */}
-<div
-  style={{
-    background: "#1e1e1e",
-    padding: "25px",
-    borderRadius: "16px",
-    marginTop: "25px"
-  }}
->
-  <h2 style={{ marginBottom: "20px" }}>
-    ☠️ Historial de bajas
-  </h2>
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>☠️ Historial de bajas</h2>
 
-  {historialMuertes.length === 0 ? (
-    <p>No hay registros de bajas</p>
-  ) : (
-    historialMuertes.map((muerte) => (
-      <div
-        key={muerte.id}
-        style={{
-          background: "#2a1111",
-          padding: "15px",
-          borderRadius: "12px",
-          marginBottom: "15px",
-          borderLeft: "5px solid crimson"
-        }}
-      >
-        <p><strong>Fecha:</strong> {muerte.fecha}</p>
-        <p><strong>Causa:</strong> {muerte.causa}</p>
-        <p><strong>Peso:</strong> {muerte.peso} kg</p>
-        <p><strong>Costo estimado:</strong> ${new Intl.NumberFormat("es-MX", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-}).format(muerte.costo_estimado)} MXN</p>
-        <p>
-          <strong>Observaciones:</strong>{" "}
-          {muerte.observaciones || "Sin observaciones"}
-        </p>
+        {historialMuertes.length === 0 ? (
+          <p style={styles.text}>No hay registros de bajas.</p>
+        ) : (
+          historialMuertes.map((muerte) => (
+            <div key={muerte.id} style={styles.bajaCard}>
+              <p style={styles.text}>
+                <strong style={styles.strong}>Fecha:</strong> {muerte.fecha}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Causa:</strong> {muerte.causa}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Peso:</strong>{" "}
+                {muerte.peso || "N/A"} kg
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Costo estimado:</strong>{" "}
+                {formatoMoneda(
+                  muerte.costo_estimado_perdida ?? muerte.costo_estimado ?? 0
+                )}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Observaciones:</strong>{" "}
+                {muerte.observaciones || "Sin observaciones"}
+              </p>
+            </div>
+          ))
+        )}
       </div>
-    ))
-  )}
-</div>
 
-      {/* REGISTRAR PESO */}
-      {animal.estado !== "muerto" && (
+      {!bloqueado && (
+        <div style={styles.card}>
+          <h3 style={styles.sectionTitle}>📊 Registrar peso</h3>
 
-        <div className="section">
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <input
+              style={styles.input}
+              type="number"
+              placeholder="Peso"
+              value={nuevoPeso}
+              onChange={(e) => setNuevoPeso(e.target.value)}
+            />
 
-        <h3>
-          📊 Registrar peso
-        </h3>
+            <input
+              style={styles.input}
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+            />
 
+            <button style={styles.button} onClick={handleRegistrarPeso}>
+              Guardar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!bloqueado && (
         <div
           style={{
             display: "flex",
             gap: "10px",
-            flexWrap: "wrap"
+            flexWrap: "wrap",
+            marginBottom: "22px",
           }}
         >
-
-          <input
-            type="number"
-            placeholder="Peso"
-
-            value={nuevoPeso}
-
-            onChange={(e) =>
-              setNuevoPeso(e.target.value)
-            }
-          />
-
-          <input
-            type="date"
-
-            value={fecha}
-
-            onChange={(e) =>
-              setFecha(e.target.value)
-            }
-          />
-
-          <button onClick={handleRegistrarPeso}>
-            Guardar
-          </button>
-
-        </div>
-
-      </div>
-
-      )}
-
-      {/* BOTÓN MODAL */}
-      {animal.estado !== "muerto" && (
-        <>
-          <button
-            onClick={() => setMostrarModal(true)}
-          >
+          <button style={styles.secondaryButton} onClick={() => setMostrarModal(true)}>
             💊 Aplicar medicamento
           </button>
 
           <button
+            style={styles.dangerButton}
             onClick={() => setMostrarModalMuerte(true)}
-            style={{
-              marginLeft: "10px",
-              background: "#8b0000",
-              color: "white",
-              border: "none",
-              padding: "10px 16px",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontWeight: "bold"
-            }}
           >
             ☠️ Registrar baja
           </button>
-        </>
-      )}
-
-      {/* CORRALES */}
-      {animal.estado !== "muerto" && (
-
-        <div
-        className="section"
-        style={{ marginTop: "25px" }}
-      >
-
-        <h3>
-          🐖 Asignar a corral
-        </h3>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            flexWrap: "wrap"
-          }}
-        >
-
-          <select
-            value={corralId}
-            onChange={e => setCorralId(e.target.value)}
-          >
-
-            <option value="">
-              Seleccionar
-            </option>
-
-            {corrales.map(c => (
-
-              <option
-                key={c.id}
-                value={c.id}
-              >
-                {c.nombre} ({c.animales_count}/{c.capacidad})
-              </option>
-
-            ))}
-
-          </select>
-
-          <button
-
-            onClick={async () => {
-
-              try {
-
-                const res = await fetch(
-                  `http://127.0.0.1:8000/api/animales/${animal.id}/asignar-corral`,
-                  {
-                    method: "POST",
-
-                    headers: {
-                      "Content-Type": "application/json"
-                    },
-
-                    body: JSON.stringify({
-                      corral_id: corralId
-                    })
-                  }
-                );
-
-                const data = await res.json();
-
-                if (!res.ok) {
-                  throw new Error(data.error);
-                }
-
-                alert("✅ Asignado");
-
-                window.location.reload();
-
-              }
-
-              catch (err) {
-
-                alert(err.message);
-
-              }
-
-            }}
-
-          >
-            Asignar
-          </button>
-
         </div>
-
-      </div>
-
       )}
 
-      {/* MODAL */}
+      {!bloqueado && (
+        <div style={styles.card}>
+          <h3 style={styles.sectionTitle}>🐖 Asignar a corral</h3>
+
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <select
+              style={styles.input}
+              value={corralId}
+              onChange={(e) => setCorralId(e.target.value)}
+            >
+              <option value="">Seleccionar</option>
+
+              {corrales.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre} — {c.tipo_corral || "general"} (
+                  {c.animales_count ?? c.ocupados ?? 0}/{c.capacidad})
+                </option>
+              ))}
+            </select>
+
+            <button style={styles.button} onClick={asignarCorral}>
+              Asignar
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>📈 Gráfica de crecimiento</h2>
+
+        {ordenados.length === 0 ? (
+          <p style={styles.text}>Sin datos suficientes para graficar.</p>
+        ) : (
+          <Line data={chartData} options={chartOptions} />
+        )}
+      </div>
+
       {mostrarModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modal}>
+            <h3 style={styles.sectionTitle}>💊 Aplicar medicamento</h3>
 
-  <div
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100vw",
-      height: "100vh",
-      background: "rgba(0,0,0,0.65)",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: 9999
-    }}
-  >
+            <div
+              style={{
+                display: "flex",
+                gap: "12px",
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <select
+                style={styles.input}
+                value={medicamentoId}
+                onChange={(e) => {
+                  const med = medicamentos.find((m) => m.id == e.target.value);
+                  setMedicamentoId(e.target.value);
+                  setStock(med ? Number(med.stock) : 0);
+                }}
+              >
+                <option value="">Seleccionar medicamento</option>
 
-    <div
-      style={{
-        background: "#1e1e1e",
-        padding: "30px",
-        borderRadius: "16px",
-        width: "500px",
-        maxWidth: "90%",
-        boxShadow: "0 0 30px rgba(0,0,0,0.5)"
-      }}
-    >
+                {medicamentos.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre} (Stock: {m.stock})
+                  </option>
+                ))}
+              </select>
 
-      <h3 style={{ marginBottom: "20px" }}>
-        💊 Aplicar medicamento
-      </h3>
+              <input
+                style={styles.input}
+                type="number"
+                placeholder="Dosis"
+                value={dosis}
+                onChange={(e) => setDosis(e.target.value)}
+              />
+            </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          flexWrap: "wrap",
-          alignItems: "center"
-        }}
-      >
+            <div
+              style={{
+                marginTop: "15px",
+                display: "flex",
+                gap: "15px",
+                flexWrap: "wrap",
+              }}
+            >
+              {stock <= 10 && medicamentoId && (
+                <span style={{ color: "#f97316", fontWeight: 900 }}>
+                  ⚠️ Stock bajo
+                </span>
+              )}
 
-        <select
-          value={medicamentoId}
-          onChange={(e) => {
-            const med = medicamentos.find(
-              m => m.id == e.target.value
-            );
+              {Number(dosis) > Number(stock) && (
+                <span style={{ color: "#dc2626", fontWeight: 900 }}>
+                  ❌ Stock insuficiente
+                </span>
+              )}
+            </div>
 
-            setMedicamentoId(e.target.value);
-            setStock(med ? Number(med.stock) : 0);
-          }}
-          style={{
-            padding: "10px",
-            borderRadius: "8px",
-            background: "#121212",
-            color: "white",
-            border: "1px solid #333",
-            minWidth: "220px"
-          }}
-        >
-          <option value="">
-            Seleccionar medicamento
-          </option>
+            <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
+              <button
+                style={{
+                  ...styles.button,
+                  background:
+                    Number(dosis) > Number(stock) ? "#94a3b8" : "#16a34a",
+                }}
+                onClick={enviarSanidad}
+                disabled={
+                  !medicamentoId || !dosis || Number(dosis) > Number(stock)
+                }
+              >
+                Guardar
+              </button>
 
-          {medicamentos.map(m => (
-            <option key={m.id} value={m.id}>
-              {m.nombre} (Stock: {m.stock})
-            </option>
-          ))}
-        </select>
+              <button
+                style={styles.dangerButton}
+                onClick={() => setMostrarModal(false)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-        <input
-          type="number"
-          placeholder="Dosis"
-          value={dosis}
-          onChange={(e) => setDosis(e.target.value)}
-          style={{
-            width: "120px",
-            padding: "10px",
-            borderRadius: "8px",
-            border: "1px solid #333",
-            background: "#121212",
-            color: "white"
-          }}
-        />
+      {mostrarModalMuerte && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modal}>
+            <h2 style={styles.sectionTitle}>☠️ Registrar baja</h2>
 
-      </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                marginTop: "16px",
+              }}
+            >
+              <input
+                style={styles.input}
+                type="date"
+                value={fechaMuerte}
+                onChange={(e) => setFechaMuerte(e.target.value)}
+              />
 
-      <div
-        style={{
-          marginTop: "15px",
-          display: "flex",
-          gap: "15px",
-          flexWrap: "wrap"
-        }}
-      >
+              <select
+                style={styles.input}
+                value={causaMuerte}
+                onChange={(e) => setCausaMuerte(e.target.value)}
+              >
+                <option value="enfermedad">Enfermedad</option>
+                <option value="aplastamiento">Aplastamiento</option>
+                <option value="bajo_peso">Bajo peso</option>
+                <option value="problema_respiratorio">Problema respiratorio</option>
+                <option value="problema_digestivo">Problema digestivo</option>
+                <option value="lesion">Lesión</option>
+                <option value="sacrificio_sanitario">Sacrificio sanitario</option>
+                <option value="descarte_reproductivo">Descarte reproductivo</option>
+                <option value="baja_productividad">Baja productividad</option>
+                <option value="edad_avanzada">Edad avanzada</option>
+                <option value="otra_controlada">Otra controlada</option>
+              </select>
 
-        {stock <= 10 && medicamentoId && (
-          <span style={{ color: "#ff9800" }}>
-            ⚠️ Stock bajo
-          </span>
-        )}
+              <input
+                style={styles.input}
+                type="number"
+                placeholder="Peso"
+                value={pesoMuerte}
+                onChange={(e) => setPesoMuerte(e.target.value)}
+              />
 
-        {Number(dosis) > Number(stock) && (
-          <span style={{ color: "#f44336" }}>
-            ❌ Stock insuficiente
-          </span>
-        )}
+              <textarea
+                style={{
+                  ...styles.input,
+                  minHeight: "90px",
+                  resize: "vertical",
+                }}
+                placeholder="Observaciones"
+                value={observacionesMuerte}
+                onChange={(e) => setObservacionesMuerte(e.target.value)}
+              />
+            </div>
 
-      </div>
+            <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
+              <button style={styles.dangerButton} onClick={registrarMuerte}>
+                Confirmar baja
+              </button>
 
-      <div
-        style={{
-          marginTop: "20px",
-          display: "flex",
-          gap: "10px"
-        }}
-      >
-
-        <button
-          onClick={enviarSanidad}
-          disabled={
-            !medicamentoId ||
-            !dosis ||
-            Number(dosis) > Number(stock)
-          }
-          style={{
-            padding: "10px 18px",
-            borderRadius: "8px",
-            border: "none",
-            cursor: "pointer",
-            background:
-              Number(dosis) > Number(stock)
-                ? "#555"
-                : "#4CAF50",
-            color: "white",
-            fontWeight: "bold"
-          }}
-        >
-          Guardar
-        </button>
-
-        <button
-          onClick={() => setMostrarModal(false)}
-          style={{
-            padding: "10px 18px",
-            borderRadius: "8px",
-            border: "none",
-            cursor: "pointer",
-            background: "#b71c1c",
-            color: "white",
-            fontWeight: "bold"
-          }}
-        >
-          Cancelar
-        </button>
-
-      </div>
-
+              <button
+                style={styles.secondaryButton}
+                onClick={() => setMostrarModalMuerte(false)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-
-  </div>
-)}
-
-{mostrarModalMuerte && (
-
-  <div
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      width: "100vw",
-      height: "100vh",
-      background: "rgba(0,0,0,0.65)",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: 9999
-    }}
-  >
-
-    <div
-      style={{
-        background: "#1e1e1e",
-        padding: "30px",
-        borderRadius: "16px",
-        width: "500px",
-        maxWidth: "90%"
-      }}
-    >
-
-      <h2>
-        ☠️ Registrar baja
-      </h2>
-
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-          marginTop: "20px"
-        }}
-      >
-
-        <input
-          type="date"
-          value={fechaMuerte}
-          onChange={(e) =>
-            setFechaMuerte(e.target.value)
-          }
-        />
-
-        <input
-          type="text"
-          placeholder="Causa de muerte"
-          value={causaMuerte}
-          onChange={(e) =>
-            setCausaMuerte(e.target.value)
-          }
-        />
-
-        <input
-          type="number"
-          placeholder="Peso"
-          value={pesoMuerte}
-          onChange={(e) =>
-            setPesoMuerte(e.target.value)
-          }
-        />
-
-        <textarea
-          placeholder="Observaciones"
-          value={observacionesMuerte}
-          onChange={(e) =>
-            setObservacionesMuerte(e.target.value)
-          }
-        />
-
-      </div>
-
-      <div
-        style={{
-          marginTop: "20px",
-          display: "flex",
-          gap: "10px"
-        }}
-      >
-
-        <button
-          onClick={registrarMuerte}
-          style={{
-            background: "#8b0000",
-            color: "white",
-            border: "none",
-            padding: "10px 18px",
-            borderRadius: "8px",
-            cursor: "pointer"
-          }}
-        >
-          Confirmar baja
-        </button>
-
-        <button
-          onClick={() =>
-            setMostrarModalMuerte(false)
-          }
-          style={{
-            background: "#555",
-            color: "white",
-            border: "none",
-            padding: "10px 18px",
-            borderRadius: "8px",
-            cursor: "pointer"
-          }}
-        >
-          Cancelar
-        </button>
-
-      </div>
-
-    </div>
-
-  </div>
-
-)}
-
-      {/* GRÁFICA */}
-      <div
-        style={{
-          marginTop: "30px"
-        }}
-      >
-
-        <Line data={chartData} />
-
-      </div>
-
-    </div>
-
   );
-
 }
