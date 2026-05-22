@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 const API_URL = "http://127.0.0.1:8000/api/finanzas/resumen";
+const PDF_URL = "http://127.0.0.1:8000/api/finanzas/pdf";
+const EXCEL_URL = "http://127.0.0.1:8000/api/finanzas/excel";
 
 const moneyFormatter = new Intl.NumberFormat("es-MX", {
   style: "currency",
@@ -121,9 +123,19 @@ export default function Finanzas() {
           </p>
         </div>
 
-        <button style={styles.primaryButton} onClick={cargarResumen}>
-          Actualizar
-        </button>
+        <div style={styles.headerActions}>
+          <button style={styles.secondaryButton} onClick={() => window.open(PDF_URL, "_blank")}>
+            Descargar PDF
+          </button>
+
+          <button style={styles.secondaryButton} onClick={() => window.open(EXCEL_URL, "_blank")}>
+            Descargar Excel
+          </button>
+
+          <button style={styles.primaryButton} onClick={cargarResumen}>
+            Actualizar
+          </button>
+        </div>
       </div>
 
       <div style={styles.warningBox}>
@@ -432,6 +444,22 @@ const styles = {
     color: "#4b5563",
     fontSize: "15px",
     lineHeight: 1.5,
+  },
+  headerActions: {
+    display: "flex",
+    gap: "10px",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  secondaryButton: {
+    border: "1px solid #111827",
+    background: "white",
+    color: "#111827",
+    padding: "12px 16px",
+    borderRadius: "12px",
+    fontWeight: 800,
+    cursor: "pointer",
+    boxShadow: "0 8px 18px rgba(17, 24, 39, 0.08)",
   },
   primaryButton: {
     border: "none",

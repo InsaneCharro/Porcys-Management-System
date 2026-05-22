@@ -253,28 +253,20 @@ class ReporteController extends Controller
 
     public function finanzasPdf()
     {
-        $historial = \App\Models\MovimientoInventario::join(
-            'inventarios',
-            'movimientos_inventario.inventario_id',
-            '=',
-            'inventarios.id'
-        )
-        ->where('movimientos_inventario.tipo', 'consumo')
-        ->select(
-            'inventarios.nombre_producto',
-            'movimientos_inventario.cantidad',
-            'inventarios.costo_unitario',
-            \DB::raw('(movimientos_inventario.cantidad * inventarios.costo_unitario) as total'),
-            'movimientos_inventario.created_at'
-        )
-        ->orderBy('movimientos_inventario.created_at', 'desc')
-        ->get();
+        $finanzasController = app(\App\Http\Controllers\FinanzasController::class);
+
+        $response = $finanzasController->resumen();
+
+        $resumen = $response->getData(true);
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView(
             'reportes.finanzas',
-            compact('historial')
+            [
+                'resumen' => $resumen,
+                'fechaGeneracion' => now(),
+            ]
         );
 
-        return $pdf->download('PORCYS_Finanzas.pdf');
+        return $pdf->download('PORCYS_Reporte_Financiero.pdf');
     }
 }
