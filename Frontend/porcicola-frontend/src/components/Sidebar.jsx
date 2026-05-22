@@ -81,6 +81,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         </li>
 
         <li>
+          <Link to="/mortalidad-bajas">
+            {collapsed ? "☠️" : "☠️ Mortalidad / Bajas"}
+          </Link>
+        </li>
+
+        <li>
           <Link to="/alertas">
             {collapsed ? "🚨" : "🚨 Alertas"}
           </Link>

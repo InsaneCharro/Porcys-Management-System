@@ -17,11 +17,40 @@ export default function Alertas() {
 
   const cargarAlertas = async () => {
     try {
-      const res = await axios.get(
-        "http://127.0.0.1:8000/api/alertas"
-      );
+      const [resGeneral, resMortalidad] = await Promise.all([
+        axios.get("http://127.0.0.1:8000/api/alertas"),
+        axios.get("http://127.0.0.1:8000/api/mortalidad-bajas/alertas"),
+      ]);
 
-      setAlertas(res.data);
+      const alertasSistema = resGeneral.data || [];
+
+      const alertasMortalidad = (resMortalidad.data || []).map((alerta) => ({
+        tipo:
+          alerta.nivel === "alto"
+            ? "critica"
+            : alerta.nivel === "medio"
+            ? "importante"
+            : "informativa",
+
+        titulo:
+          alerta.tipo === "alta_mortalidad"
+            ? "Alta mortalidad detectada"
+            : "Patrón sanitario detectado",
+
+        mensaje: alerta.mensaje,
+
+        icono:
+          alerta.tipo === "alta_mortalidad"
+            ? "☠️"
+            : "🦠",
+
+        fecha: new Date().toISOString(),
+      }));
+
+      setAlertas([
+        ...alertasMortalidad,
+        ...alertasSistema,
+      ]);
     } catch (err) {
       console.error(err);
     } finally {
