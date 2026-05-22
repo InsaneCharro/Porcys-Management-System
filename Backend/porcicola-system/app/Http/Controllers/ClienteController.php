@@ -9,7 +9,16 @@ class ClienteController extends Controller
 {
     public function index()
     {
-        $clientes = Cliente::withCount('ventas')
+        $clientes = Cliente::withCount([
+                'ventas as ventas_count' => function ($query) {
+                    $query->where('estado', 'completada');
+                }
+            ])
+            ->withSum([
+                'ventas as ventas_sum_total' => function ($query) {
+                    $query->where('estado', 'completada');
+                }
+            ], 'total')
             ->orderBy('nombre')
             ->get();
 
@@ -27,7 +36,14 @@ class ClienteController extends Controller
             'notas' => 'nullable|string'
         ]);
 
-        $cliente = Cliente::create($request->all());
+        $cliente = Cliente::create($request->only([
+            'nombre',
+            'telefono',
+            'email',
+            'direccion',
+            'tipo_cliente',
+            'notas'
+        ]));
 
         return response()->json([
             'mensaje' => 'Cliente registrado correctamente',
@@ -37,7 +53,17 @@ class ClienteController extends Controller
 
     public function show($id)
     {
-        $cliente = Cliente::with('ventas.animal')->findOrFail($id);
+        $cliente = Cliente::with([
+                'ventas' => function ($query) {
+                    $query
+                        ->with([
+                            'detalleAnimales.animal'
+                        ])
+                        ->orderByDesc('fecha')
+                        ->orderByDesc('id');
+                }
+            ])
+            ->findOrFail($id);
 
         return response()->json($cliente);
     }
@@ -55,7 +81,14 @@ class ClienteController extends Controller
             'notas' => 'nullable|string'
         ]);
 
-        $cliente->update($request->all());
+        $cliente->update($request->only([
+            'nombre',
+            'telefono',
+            'email',
+            'direccion',
+            'tipo_cliente',
+            'notas'
+        ]));
 
         return response()->json([
             'mensaje' => 'Cliente actualizado correctamente',
@@ -67,7 +100,7 @@ class ClienteController extends Controller
     {
         $cliente = Cliente::findOrFail($id);
 
-        if ($cliente->ventas()->count() > 0) {
+        if ($cliente->ventas()->exists()) {
             return response()->json([
                 'error' => 'No se puede eliminar un cliente con historial de ventas'
             ], 400);
@@ -82,8 +115,16 @@ class ClienteController extends Controller
 
     public function ranking()
     {
-        $clientes = Cliente::withCount('ventas')
-            ->withSum('ventas', 'total')
+        $clientes = Cliente::withCount([
+                'ventas as ventas_count' => function ($query) {
+                    $query->where('estado', 'completada');
+                }
+            ])
+            ->withSum([
+                'ventas as ventas_sum_total' => function ($query) {
+                    $query->where('estado', 'completada');
+                }
+            ], 'total')
             ->orderByDesc('ventas_sum_total')
             ->get();
 

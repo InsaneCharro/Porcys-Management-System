@@ -8,6 +8,7 @@ use App\Models\Cliente;
 use App\Models\VentaAnimal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class VentaController extends Controller
 {
@@ -24,6 +25,17 @@ class VentaController extends Controller
             'animales.*.precio_fijo' => 'nullable|numeric|min:0',
         ]);
 
+        $animalIds = collect($request->animales)
+            ->pluck('animal_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        if ($animalIds->count() !== $animalIds->unique()->count()) {
+            return response()->json([
+                'error' => 'No puedes registrar el mismo animal dos veces en una misma venta.'
+            ], 400);
+        }
+
         DB::beginTransaction();
 
         try {
@@ -33,41 +45,34 @@ class VentaController extends Controller
             $detalles = [];
 
             foreach ($request->animales as $item) {
-                $animal = Animal::findOrFail($item['animal_id']);
+                $animal = Animal::where('id', $item['animal_id'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-                if ($animal->estado === 'muerto') {
-                    throw new \Exception(
-                        "El animal {$animal->identificador_unico} está muerto"
-                    );
-                }
-
-                if ($animal->estado === 'vendido') {
-                    throw new \Exception(
-                        "El animal {$animal->identificador_unico} ya fue vendido"
-                    );
-                }
+                $this->validarAnimalVendible($animal, $request->tipo_venta);
 
                 if ($request->tipo_venta === 'abasto') {
-                    if (empty($item['precio_kg'])) {
+                    $precioKg = isset($item['precio_kg']) ? (float) $item['precio_kg'] : 0;
+
+                    if ($precioKg <= 0) {
                         throw new \Exception(
-                            "Precio por kg requerido para venta abasto"
+                            "Precio por kg requerido para venta de abasto."
                         );
                     }
 
-                    $peso = $animal->peso ?? 0;
+                    $peso = (float) ($animal->peso ?? 0);
 
                     if ($peso <= 0) {
                         throw new \Exception(
-                            "El animal {$animal->identificador_unico} no tiene peso registrado"
+                            "El animal {$animal->identificador_unico} no tiene peso válido registrado."
                         );
                     }
 
-                    $subtotalIndividual =
-                        $peso * $item['precio_kg'];
+                    $subtotalIndividual = round($peso * $precioKg, 2);
 
                     $detalles[] = [
                         'animal' => $animal,
-                        'precio_kg' => $item['precio_kg'],
+                        'precio_kg' => $precioKg,
                         'peso_individual' => $peso,
                         'precio_fijo' => null,
                         'subtotal_individual' => $subtotalIndividual
@@ -77,19 +82,21 @@ class VentaController extends Controller
                 }
 
                 if ($request->tipo_venta === 'pie_cria') {
-                    if (empty($item['precio_fijo'])) {
+                    $precioFijo = isset($item['precio_fijo']) ? (float) $item['precio_fijo'] : 0;
+
+                    if ($precioFijo <= 0) {
                         throw new \Exception(
-                            "Precio fijo requerido para pie de cría"
+                            "Precio fijo requerido para venta de pie de cría."
                         );
                     }
 
-                    $subtotalIndividual = $item['precio_fijo'];
+                    $subtotalIndividual = round($precioFijo, 2);
 
                     $detalles[] = [
                         'animal' => $animal,
                         'precio_kg' => null,
                         'peso_individual' => $animal->peso,
-                        'precio_fijo' => $item['precio_fijo'],
+                        'precio_fijo' => $precioFijo,
                         'subtotal_individual' => $subtotalIndividual
                     ];
 
@@ -97,8 +104,9 @@ class VentaController extends Controller
                 }
             }
 
-            $iva = $subtotal * 0.16;
-            $total = $subtotal + $iva;
+            $subtotal = round($subtotal, 2);
+            $iva = round($subtotal * 0.16, 2);
+            $total = round($subtotal + $iva, 2);
 
             $folio = 'VTA-' . now()->format('YmdHis');
 
@@ -125,9 +133,15 @@ class VentaController extends Controller
                     'subtotal_individual' => $detalle['subtotal_individual']
                 ]);
 
-                $detalle['animal']->update([
-                    'estado' => 'vendido'
-                ]);
+                $animal = $detalle['animal'];
+
+                $animal->estado = 'vendido';
+
+                if (Schema::hasColumn('animales', 'corral_id')) {
+                    $animal->corral_id = null;
+                }
+
+                $animal->save();
             }
 
             DB::commit();
@@ -155,37 +169,121 @@ class VentaController extends Controller
             'cliente',
             'detalleAnimales.animal'
         ])
-        ->orderByDesc('fecha')
-        ->get();
+            ->orderByDesc('fecha')
+            ->orderByDesc('id')
+            ->get();
 
         return response()->json($ventas);
     }
 
     public function resumen()
     {
+        $ventasCompletadas = Venta::where('estado', 'completada');
+
         return response()->json([
-            'total_ventas' => Venta::count(),
-            'ingresos_totales' => round(Venta::sum('total'), 2),
-            'promedio_por_venta' => round(Venta::avg('total') ?? 0, 2)
+            'total_ventas' => (clone $ventasCompletadas)->count(),
+            'ingresos_totales' => round((clone $ventasCompletadas)->sum('total'), 2),
+            'promedio_por_venta' => round((clone $ventasCompletadas)->avg('total') ?? 0, 2)
         ]);
     }
 
     public function rankingClientes()
     {
-        return response()->json(
-            Cliente::withCount('ventas')
-                ->withSum('ventas', 'total')
-                ->orderByDesc('ventas_sum_total')
-                ->get()
-        );
+        $clientes = Cliente::withCount([
+                'ventas as ventas_count' => function ($query) {
+                    $query->where('estado', 'completada');
+                }
+            ])
+            ->withSum([
+                'ventas as ventas_sum_total' => function ($query) {
+                    $query->where('estado', 'completada');
+                }
+            ], 'total')
+            ->orderByDesc('ventas_sum_total')
+            ->get();
+
+        return response()->json($clientes);
     }
 
     public function porTipo()
     {
         return response()->json(
-            Venta::selectRaw('tipo_venta, COUNT(*) as cantidad, SUM(total) as total')
+            Venta::where('estado', 'completada')
+                ->selectRaw('tipo_venta, COUNT(*) as cantidad, SUM(total) as total')
                 ->groupBy('tipo_venta')
                 ->get()
         );
+    }
+
+    private function validarAnimalVendible(Animal $animal, string $tipoVenta): void
+    {
+        $estado = $this->normalizarTexto($animal->estado);
+
+        $estadosBloqueados = [
+            'muerto',
+            'muerta',
+            'vendido',
+            'vendida',
+            'descartado',
+            'descartada',
+            'baja',
+            'baja sanitaria',
+            'sacrificado',
+            'sacrificada',
+            'sacrificio sanitario',
+        ];
+
+        if (in_array($estado, $estadosBloqueados, true)) {
+            throw new \Exception(
+                "El animal {$animal->identificador_unico} no puede venderse porque su estado actual es: {$animal->estado}."
+            );
+        }
+
+        $clasificacion = $this->normalizarTexto($animal->clasificacion ?? '');
+
+        if ($tipoVenta === 'abasto' && $clasificacion !== 'abasto') {
+            throw new \Exception(
+                "El animal {$animal->identificador_unico} no está clasificado como abasto."
+            );
+        }
+
+        $clasificacionesPieCria = [
+            'pie de cria',
+            'pie cria',
+            'reproductor',
+            'reproductora',
+        ];
+
+        if ($tipoVenta === 'pie_cria' && !in_array($clasificacion, $clasificacionesPieCria, true)) {
+            throw new \Exception(
+                "El animal {$animal->identificador_unico} no está clasificado como pie de cría."
+            );
+        }
+    }
+
+    private function normalizarTexto($valor): string
+    {
+        $texto = trim((string) $valor);
+        $texto = str_replace(['_', '-'], ' ', $texto);
+        $texto = mb_strtolower($texto, 'UTF-8');
+
+        $texto = strtr($texto, [
+            'á' => 'a',
+            'é' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' => 'u',
+            'Á' => 'a',
+            'É' => 'e',
+            'Í' => 'i',
+            'Ó' => 'o',
+            'Ú' => 'u',
+            'ñ' => 'n',
+            'Ñ' => 'n',
+        ]);
+
+        $texto = preg_replace('/\s+/', ' ', $texto);
+
+        return trim($texto);
     }
 }

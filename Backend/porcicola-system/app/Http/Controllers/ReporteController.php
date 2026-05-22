@@ -18,18 +18,38 @@ class ReporteController extends Controller
     public function ventas()
     {
         $ventas = Venta::with([
-            'animal',
-            'cliente'
-        ])
-        ->orderBy('fecha', 'desc')
-        ->get();
+                'cliente',
+                'detalleAnimales.animal'
+            ])
+            ->orderByDesc('fecha')
+            ->orderByDesc('id')
+            ->get();
 
-        $pdf = Pdf::loadView('reportes.ventas', [
+        $ventasCompletadas = $ventas->filter(function ($venta) {
+            return mb_strtolower(trim((string) $venta->estado), 'UTF-8') === 'completada';
+        });
+
+        $totalCompletadas = round($ventasCompletadas->sum('total'), 2);
+
+        $totalGeneral = round($ventas->sum('total'), 2);
+
+        $animalesVendidos = $ventas->sum(function ($venta) {
+            return $venta->detalleAnimales->count();
+        });
+
+        $html = view('reportes.ventas', [
             'ventas' => $ventas,
-            'fecha' => now()
-        ]);
+            'fecha' => now(),
+            'totalCompletadas' => $totalCompletadas,
+            'totalGeneral' => $totalGeneral,
+            'animalesVendidos' => $animalesVendidos,
+        ])->render();
 
-        return $pdf->download('reporte_ventas_porcys.pdf');
+        $html = mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8');
+
+        $pdf = Pdf::loadHTML($html);
+
+        return $pdf->download('PORCYS_Reporte_Ventas.pdf');
     }
 
     public function inventario()
