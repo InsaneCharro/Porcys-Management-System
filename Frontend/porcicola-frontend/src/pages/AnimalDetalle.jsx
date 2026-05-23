@@ -422,6 +422,83 @@ export default function AnimalDetalle() {
     );
   };
 
+  const renderCalidadPedigree = () => {
+    const calidad = pedigree?.calidad_pedigree;
+
+    if (!calidad) {
+      return null;
+    }
+
+    const porcentaje = calidad.porcentaje ?? 0;
+    const faltantes = calidad.faltantes || [];
+
+    return (
+      <div style={styles.qualityBox}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "12px",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h3 style={{ ...styles.sectionTitle, fontSize: "20px", marginBottom: "6px" }}>
+              📋 Calidad documental del pedigree
+            </h3>
+
+            <p style={styles.text}>
+              <strong style={styles.strong}>Nivel:</strong>{" "}
+              {calidad.nivel || "No calculado"}
+            </p>
+          </div>
+
+          <span
+            style={
+              calidad.completo
+                ? styles.badgeSuccess
+                : porcentaje >= 70
+                ? styles.badgeInfo
+                : styles.badgeWarning
+            }
+          >
+            {porcentaje}% completo
+          </span>
+        </div>
+
+        <div style={styles.progressTrack}>
+          <div
+            style={{
+              ...styles.progressFill,
+              width: `${Math.max(0, Math.min(100, porcentaje))}%`,
+            }}
+          />
+        </div>
+
+        {faltantes.length > 0 ? (
+          <div style={{ marginTop: "12px" }}>
+            <p style={styles.text}>
+              <strong style={styles.strong}>Datos faltantes:</strong>
+            </p>
+
+            <ul style={{ marginTop: "8px", color: "#475569" }}>
+              {faltantes.map((faltante, index) => (
+                <li key={`${faltante}-${index}`} style={{ marginBottom: "4px" }}>
+                  {faltante}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p style={styles.text}>
+            El pedigree cuenta con los datos mínimos para certificado completo.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const renderPesoRelevante = (titulo, dato) => {
     return (
       <tr>
@@ -445,6 +522,7 @@ export default function AnimalDetalle() {
 
     const certificado = pedigree.certificado || {};
     const clasificacion = pedigree.clasificacion || {};
+    const calidad = pedigree.calidad_pedigree || {};
     const animalCert = pedigree.animal || {};
 
     const madre = pedigree.genealogia?.madre;
@@ -632,12 +710,33 @@ export default function AnimalDetalle() {
                   ${certificado.apto_pie_cria ? "Apto para pie de cría" : "No apto / datos insuficientes"}
                 </div>
               </div>
+
+              <div class="card">
+                <div class="label">Calidad documental</div>
+                <div class="valor">
+                  ${limpiarHtml(calidad.nivel || "No calculada")} · ${limpiarHtml(calidad.porcentaje ?? 0)}%
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="label">Certificado completo</div>
+                <div class="valor">
+                  ${calidad.completo ? "Sí" : "No, contiene observaciones"}
+                </div>
+              </div>
             </div>
 
             <div class="nota ${certificado.apto_pie_cria ? "" : "no-apto"}">
               ${limpiarHtml(clasificacion.motivo)}
               <br />
               ${limpiarHtml(certificado.nota)}
+              <br />
+              Observaciones documentales:
+              ${
+                calidad.faltantes && calidad.faltantes.length > 0
+                  ? calidad.faltantes.map((item) => limpiarHtml(item)).join(", ")
+                  : "Sin observaciones documentales."
+              }
             </div>
 
             <div style="margin-top: 24px; text-align: center;">
@@ -822,6 +921,36 @@ export default function AnimalDetalle() {
       fontWeight: 900,
       fontSize: "13px",
     },
+    badgeInfo: {
+      display: "inline-block",
+      padding: "8px 12px",
+      borderRadius: "999px",
+      background: "#dbeafe",
+      color: "#1d4ed8",
+      fontWeight: 900,
+      fontSize: "13px",
+    },
+    qualityBox: {
+      marginTop: "20px",
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      borderRadius: "16px",
+      padding: "16px",
+    },
+    progressTrack: {
+      width: "100%",
+      height: "12px",
+      background: "#e2e8f0",
+      borderRadius: "999px",
+      overflow: "hidden",
+      marginTop: "12px",
+    },
+    progressFill: {
+      height: "100%",
+      background: "#0f172a",
+      borderRadius: "999px",
+      transition: "width 0.3s ease",
+    },
     modalOverlay: {
       position: "fixed",
       top: 0,
@@ -944,6 +1073,8 @@ export default function AnimalDetalle() {
                 pedigree.genealogia?.abuelos_paternos?.abuelo
               )}
             </div>
+
+            {renderCalidadPedigree()}
 
             <div style={{ marginTop: "20px" }}>
               <h3 style={{ ...styles.sectionTitle, fontSize: "20px" }}>

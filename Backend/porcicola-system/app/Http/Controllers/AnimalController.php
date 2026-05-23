@@ -146,6 +146,7 @@ class AnimalController extends Controller
         }
 
         $clasificacion = $this->clasificacionProductiva($animal, $pesosRelevantes);
+        $calidadPedigree = $this->calidadPedigree($animal, $pesosRelevantes);
 
         return response()->json([
             'animal' => $this->resumenAnimal($animal),
@@ -175,6 +176,7 @@ class AnimalController extends Controller
                 'estado' => $camada->estado,
             ] : null,
             'clasificacion' => $clasificacion,
+            'calidad_pedigree' => $calidadPedigree,
             'certificado' => [
                 'folio' => 'CERT-PC-' . str_pad($animal->id, 5, '0', STR_PAD_LEFT),
                 'fecha_emision' => now()->toDateString(),
@@ -184,6 +186,10 @@ class AnimalController extends Controller
                     'reproductora',
                     'semental'
                 ]),
+                'certificado_completo' => $calidadPedigree['completo'],
+                'calidad_documental' => $calidadPedigree['porcentaje'],
+                'nivel_documental' => $calidadPedigree['nivel'],
+                'observaciones' => $calidadPedigree['faltantes'],
                 'nota' => 'Certificado generado en modo consulta. No modifica datos del animal.',
             ],
         ]);
@@ -277,6 +283,81 @@ class AnimalController extends Controller
             'edad_dias' => $edadDias,
             'etapa' => $peso->etapa ?? null,
             'estado' => $peso->estado ?? null,
+        ];
+    }
+
+    private function calidadPedigree($animal, $pesosRelevantes)
+    {
+        $criterios = [
+            [
+                'cumple' => !empty($animal->identificador_unico),
+                'faltante' => 'Identificador único no registrado',
+            ],
+            [
+                'cumple' => !empty($animal->sexo),
+                'faltante' => 'Sexo no registrado',
+            ],
+            [
+                'cumple' => !empty($animal->fecha_nacimiento),
+                'faltante' => 'Fecha de nacimiento no registrada',
+            ],
+            [
+                'cumple' => !empty($animal->raza) && $this->normalizar($animal->raza) !== 'pendiente',
+                'faltante' => 'Raza o genética no registrada',
+            ],
+            [
+                'cumple' => !empty($animal->madre_id),
+                'faltante' => 'Madre no registrada',
+            ],
+            [
+                'cumple' => !empty($animal->padre_id),
+                'faltante' => 'Padre no registrado',
+            ],
+            [
+                'cumple' => !empty($pesosRelevantes['nacimiento']['peso']),
+                'faltante' => 'Peso de nacimiento no registrado',
+            ],
+            [
+                'cumple' => !empty($pesosRelevantes['dia_10']),
+                'faltante' => 'Peso día 10 no registrado',
+            ],
+            [
+                'cumple' => !empty($pesosRelevantes['dia_28']),
+                'faltante' => 'Peso día 28 no registrado',
+            ],
+            [
+                'cumple' => !empty($animal->clasificacion),
+                'faltante' => 'Clasificación productiva no registrada',
+            ],
+        ];
+
+        $total = count($criterios);
+        $cumplidos = collect($criterios)->where('cumple', true)->count();
+        $faltantes = collect($criterios)
+            ->where('cumple', false)
+            ->pluck('faltante')
+            ->values()
+            ->all();
+
+        $porcentaje = $total > 0 ? round(($cumplidos / $total) * 100) : 0;
+
+        if ($porcentaje >= 90) {
+            $nivel = 'Completo';
+        } elseif ($porcentaje >= 70) {
+            $nivel = 'Aceptable con observaciones';
+        } elseif ($porcentaje >= 40) {
+            $nivel = 'Incompleto';
+        } else {
+            $nivel = 'Crítico';
+        }
+
+        return [
+            'porcentaje' => $porcentaje,
+            'nivel' => $nivel,
+            'completo' => $porcentaje >= 90,
+            'cumplidos' => $cumplidos,
+            'total' => $total,
+            'faltantes' => $faltantes,
         ];
     }
 
