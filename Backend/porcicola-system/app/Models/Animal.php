@@ -21,6 +21,16 @@ class Animal extends Model
         'peso'
     ];
 
+    public function madre()
+    {
+        return $this->belongsTo(Animal::class, 'madre_id');
+    }
+
+    public function padre()
+    {
+        return $this->belongsTo(Animal::class, 'padre_id');
+    }
+
     public function gestaciones()
     {
         return $this->hasMany(Gestacion::class, 'hembra_id');

@@ -69,6 +69,7 @@ Route::get('/dashboard/ventas', [DashboardController::class, 'ventasMensuales'])
 Route::get('/dashboard/alimento', [DashboardController::class, 'consumoAlimento']);
 Route::get('/dashboard/medico', [DashboardController::class, 'aplicacionesMedicas']);
 Route::get('/ventas/grafica', [DashboardController::class, 'ventasPorDia']);
+Route::get('/animales/{id}/pedigree', [AnimalController::class, 'pedigree']);
 Route::get('/animales/{id}', [AnimalController::class, 'show']);
 Route::post('/pesos', [PesoController::class, 'store']);
 Route::get('/pesos/{animal_id}', [PesoController::class, 'porAnimal']);

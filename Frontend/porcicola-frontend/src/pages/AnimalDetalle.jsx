@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { registrarPeso } from "../services/pesoService";
+import { getPedigreeAnimal } from "../services/animalService";
 import axios from "axios";
 
 import {
@@ -35,6 +36,7 @@ export default function AnimalDetalle() {
   const { id } = useParams();
 
   const [animal, setAnimal] = useState(null);
+  const [pedigree, setPedigree] = useState(null);
   const [pesos, setPesos] = useState([]);
   const [nuevoPeso, setNuevoPeso] = useState("");
   const [fecha, setFecha] = useState("");
@@ -69,25 +71,28 @@ export default function AnimalDetalle() {
 
   const cargarDatos = async () => {
     try {
-      const [
-        animalRes,
-        pesosRes,
-        eventosRes,
-        corralesRes,
-        muertesRes,
-      ] = await Promise.all([
-        axios.get(`${API}/animales/${id}`),
-        axios.get(`${API}/pesos/${id}`),
-        axios.get(`${API}/medicamentos/historial/${id}`),
-        axios.get(`${API}/corrales`),
-        axios.get(`${API}/animales/${id}/muertes`),
-      ]);
+        const [
+          animalRes,
+          pesosRes,
+          eventosRes,
+          corralesRes,
+          muertesRes,
+          pedigreeRes,
+        ] = await Promise.all([
+          axios.get(`${API}/animales/${id}`),
+          axios.get(`${API}/pesos/${id}`),
+          axios.get(`${API}/medicamentos/historial/${id}`),
+          axios.get(`${API}/corrales`),
+          axios.get(`${API}/animales/${id}/muertes`),
+          getPedigreeAnimal(id),
+        ]);
 
-      setAnimal(animalRes.data);
-      setPesos(pesosRes.data || []);
-      setEventosSanitarios(eventosRes.data || []);
-      setCorrales(corralesRes.data || []);
-      setHistorialMuertes(muertesRes.data || []);
+        setAnimal(animalRes.data);
+        setPesos(pesosRes.data || []);
+        setEventosSanitarios(eventosRes.data || []);
+        setCorrales(corralesRes.data || []);
+        setHistorialMuertes(muertesRes.data || []);
+        setPedigree(pedigreeRes.data || null);
 
       obtenerMedicamentos().then(setMedicamentos);
     } catch (err) {
@@ -350,6 +355,304 @@ export default function AnimalDetalle() {
     }
   };
 
+  const valorSeguro = (valor, fallback = "No registrado") => {
+    if (valor === null || valor === undefined || valor === "") {
+      return fallback;
+    }
+
+    return valor;
+  };
+
+  const formatoFecha = (valor) => {
+    if (!valor) return "No registrada";
+    return valor;
+  };
+
+  const formatoPeso = (valor) => {
+    if (valor === null || valor === undefined || valor === "") {
+      return "No registrado";
+    }
+
+    const numero = Number(valor);
+
+    if (Number.isNaN(numero)) {
+      return `${valor} kg`;
+    }
+
+    return `${numero.toFixed(2)} kg`;
+  };
+
+  const limpiarHtml = (valor) => {
+    return String(valorSeguro(valor))
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  };
+
+  const renderAnimalGenealogia = (titulo, dato) => {
+    return (
+      <div style={styles.genealogyNode}>
+        <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 900 }}>
+          {titulo}
+        </div>
+
+        {dato ? (
+          <>
+            <div style={{ fontSize: "18px", color: "#0f172a", fontWeight: 900 }}>
+              {dato.identificador_unico || `Animal #${dato.id}`}
+            </div>
+
+            <div style={styles.text}>
+              Sexo: {valorSeguro(dato.sexo)} · Raza: {valorSeguro(dato.raza)}
+            </div>
+
+            <div style={{ ...styles.text, fontSize: "13px" }}>
+              Etapa: {valorSeguro(dato.etapa_actual)} · Estado:{" "}
+              {valorSeguro(dato.estado)}
+            </div>
+          </>
+        ) : (
+          <div style={{ ...styles.text, fontWeight: 800 }}>
+            Sin registro en el sistema
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderPesoRelevante = (titulo, dato) => {
+    return (
+      <tr>
+        <td style={styles.td}>{titulo}</td>
+        <td style={styles.td}>{formatoPeso(dato?.peso)}</td>
+        <td style={styles.td}>{formatoFecha(dato?.fecha)}</td>
+        <td style={styles.td}>
+          {dato?.edad_dias !== null && dato?.edad_dias !== undefined
+            ? `${dato.edad_dias} días`
+            : "No calculado"}
+        </td>
+      </tr>
+    );
+  };
+
+  const imprimirCertificado = () => {
+    if (!pedigree) {
+      alert("El pedigree aún no está cargado.");
+      return;
+    }
+
+    const certificado = pedigree.certificado || {};
+    const clasificacion = pedigree.clasificacion || {};
+    const animalCert = pedigree.animal || {};
+
+    const madre = pedigree.genealogia?.madre;
+    const padre = pedigree.genealogia?.padre;
+    const pesosCert = pedigree.pesos_relevantes || {};
+
+    const ventana = window.open("", "_blank", "width=950,height=720");
+
+    if (!ventana) {
+      alert("El navegador bloqueó la ventana de impresión.");
+      return;
+    }
+
+    ventana.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Certificado de pie de cría</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              background: #f8fafc;
+              color: #0f172a;
+              padding: 32px;
+            }
+
+            .certificado {
+              background: white;
+              border: 2px solid #0f172a;
+              border-radius: 18px;
+              padding: 28px;
+              max-width: 900px;
+              margin: 0 auto;
+            }
+
+            h1 {
+              margin: 0;
+              font-size: 30px;
+              text-align: center;
+            }
+
+            .subtitulo {
+              text-align: center;
+              color: #475569;
+              margin-top: 8px;
+              margin-bottom: 24px;
+            }
+
+            .grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 14px;
+            }
+
+            .card {
+              border: 1px solid #cbd5e1;
+              border-radius: 12px;
+              padding: 14px;
+              background: #f8fafc;
+            }
+
+            .label {
+              font-size: 12px;
+              color: #64748b;
+              font-weight: bold;
+              text-transform: uppercase;
+            }
+
+            .valor {
+              font-size: 16px;
+              font-weight: bold;
+              margin-top: 4px;
+            }
+
+            .nota {
+              margin-top: 24px;
+              padding: 14px;
+              background: #ecfdf5;
+              border: 1px solid #bbf7d0;
+              border-radius: 12px;
+              color: #166534;
+              font-weight: bold;
+            }
+
+            .no-apto {
+              background: #fff7ed;
+              border-color: #fed7aa;
+              color: #9a3412;
+            }
+
+            @media print {
+              body {
+                background: white;
+                padding: 0;
+              }
+
+              .certificado {
+                border-radius: 0;
+                border: 2px solid #0f172a;
+              }
+
+              button {
+                display: none;
+              }
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="certificado">
+            <h1>Certificado de Pie de Cría</h1>
+            <div class="subtitulo">
+              PORCYS / Porcícola Tarsicio · ${limpiarHtml(certificado.folio)}
+            </div>
+
+            <div class="grid">
+              <div class="card">
+                <div class="label">Animal</div>
+                <div class="valor">${limpiarHtml(animalCert.identificador_unico)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Fecha de emisión</div>
+                <div class="valor">${limpiarHtml(certificado.fecha_emision)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Sexo</div>
+                <div class="valor">${limpiarHtml(animalCert.sexo)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Raza / genética</div>
+                <div class="valor">${limpiarHtml(animalCert.raza)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Etapa</div>
+                <div class="valor">${limpiarHtml(animalCert.etapa_actual)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Estado</div>
+                <div class="valor">${limpiarHtml(animalCert.estado)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Madre</div>
+                <div class="valor">${limpiarHtml(madre?.identificador_unico)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Padre</div>
+                <div class="valor">${limpiarHtml(padre?.identificador_unico)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Peso nacimiento</div>
+                <div class="valor">${limpiarHtml(formatoPeso(pesosCert.nacimiento?.peso))}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Peso día 10</div>
+                <div class="valor">${limpiarHtml(formatoPeso(pesosCert.dia_10?.peso))}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Peso día 28</div>
+                <div class="valor">${limpiarHtml(formatoPeso(pesosCert.dia_28?.peso))}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Último peso</div>
+                <div class="valor">${limpiarHtml(formatoPeso(pesosCert.ultimo?.peso))}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Clasificación</div>
+                <div class="valor">${limpiarHtml(clasificacion.etiqueta)}</div>
+              </div>
+
+              <div class="card">
+                <div class="label">Resultado</div>
+                <div class="valor">
+                  ${certificado.apto_pie_cria ? "Apto para pie de cría" : "No apto / datos insuficientes"}
+                </div>
+              </div>
+            </div>
+
+            <div class="nota ${certificado.apto_pie_cria ? "" : "no-apto"}">
+              ${limpiarHtml(clasificacion.motivo)}
+              <br />
+              ${limpiarHtml(certificado.nota)}
+            </div>
+
+            <div style="margin-top: 24px; text-align: center;">
+              <button onclick="window.print()" style="padding: 12px 18px; font-weight: bold;">
+                Imprimir / Guardar como PDF
+              </button>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+
+    ventana.document.close();
+  };
+
   const eventosOrdenados = [...eventosSanitarios].sort(
     (a, b) => new Date(b.fecha) - new Date(a.fecha)
   );
@@ -494,6 +797,31 @@ export default function AnimalDetalle() {
       marginBottom: "12px",
       color: "#0f172a",
     },
+    genealogyNode: {
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      borderRadius: "16px",
+      padding: "16px",
+      color: "#0f172a",
+    },
+    badgeSuccess: {
+      display: "inline-block",
+      padding: "8px 12px",
+      borderRadius: "999px",
+      background: "#dcfce7",
+      color: "#166534",
+      fontWeight: 900,
+      fontSize: "13px",
+    },
+    badgeWarning: {
+      display: "inline-block",
+      padding: "8px 12px",
+      borderRadius: "999px",
+      background: "#ffedd5",
+      color: "#9a3412",
+      fontWeight: 900,
+      fontSize: "13px",
+    },
     modalOverlay: {
       position: "fixed",
       top: 0,
@@ -586,6 +914,182 @@ export default function AnimalDetalle() {
             {estadoCrecimiento}
           </p>
         </div>
+            </div>
+
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>🌳 Pedigree y trazabilidad genética</h2>
+
+        {!pedigree ? (
+          <p style={styles.text}>Cargando información genealógica...</p>
+        ) : (
+          <>
+            <div style={styles.grid}>
+              {renderAnimalGenealogia("Animal evaluado", pedigree.animal)}
+              {renderAnimalGenealogia("Madre", pedigree.genealogia?.madre)}
+              {renderAnimalGenealogia("Padre", pedigree.genealogia?.padre)}
+              {renderAnimalGenealogia(
+                "Abuela materna",
+                pedigree.genealogia?.abuelos_maternos?.abuela
+              )}
+              {renderAnimalGenealogia(
+                "Abuelo materno",
+                pedigree.genealogia?.abuelos_maternos?.abuelo
+              )}
+              {renderAnimalGenealogia(
+                "Abuela paterna",
+                pedigree.genealogia?.abuelos_paternos?.abuela
+              )}
+              {renderAnimalGenealogia(
+                "Abuelo paterno",
+                pedigree.genealogia?.abuelos_paternos?.abuelo
+              )}
+            </div>
+
+            <div style={{ marginTop: "20px" }}>
+              <h3 style={{ ...styles.sectionTitle, fontSize: "20px" }}>
+                ⚖️ Pesos relevantes
+              </h3>
+
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Momento</th>
+                    <th style={styles.th}>Peso</th>
+                    <th style={styles.th}>Fecha</th>
+                    <th style={styles.th}>Edad</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {renderPesoRelevante(
+                    "Nacimiento / día 0",
+                    pedigree.pesos_relevantes?.nacimiento
+                  )}
+                  {renderPesoRelevante(
+                    "Día 10",
+                    pedigree.pesos_relevantes?.dia_10
+                  )}
+                  {renderPesoRelevante(
+                    "Día 28",
+                    pedigree.pesos_relevantes?.dia_28
+                  )}
+                  {renderPesoRelevante(
+                    "Último peso",
+                    pedigree.pesos_relevantes?.ultimo
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: "20px" }}>
+              <h3 style={{ ...styles.sectionTitle, fontSize: "20px" }}>
+                🧬 Clasificación productiva
+              </h3>
+
+              <span
+                style={
+                  pedigree.certificado?.apto_pie_cria
+                    ? styles.badgeSuccess
+                    : styles.badgeWarning
+                }
+              >
+                {pedigree.clasificacion?.etiqueta || "Sin clasificación"}
+              </span>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Motivo:</strong>{" "}
+                {pedigree.clasificacion?.motivo || "No registrado"}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Estado para certificado:</strong>{" "}
+                {pedigree.certificado?.apto_pie_cria
+                  ? "Apto para pie de cría"
+                  : "No apto o con datos insuficientes"}
+              </p>
+            </div>
+
+            {pedigree.camada && (
+              <div style={{ marginTop: "20px" }}>
+                <h3 style={{ ...styles.sectionTitle, fontSize: "20px" }}>
+                  🍼 Camada relacionada
+                </h3>
+
+                <div style={styles.grid}>
+                  <p style={styles.text}>
+                    <strong style={styles.strong}>Fecha parto:</strong>{" "}
+                    {pedigree.camada.fecha_parto || "No registrada"}
+                  </p>
+
+                  <p style={styles.text}>
+                    <strong style={styles.strong}>Fecha destete:</strong>{" "}
+                    {pedigree.camada.fecha_destete || "No registrada"}
+                  </p>
+
+                  <p style={styles.text}>
+                    <strong style={styles.strong}>Total crías:</strong>{" "}
+                    {pedigree.camada.total_crias ?? "N/A"}
+                  </p>
+
+                  <p style={styles.text}>
+                    <strong style={styles.strong}>Machos / Hembras:</strong>{" "}
+                    {pedigree.camada.machos ?? "N/A"} /{" "}
+                    {pedigree.camada.hembras ?? "N/A"}
+                  </p>
+
+                  <p style={styles.text}>
+                    <strong style={styles.strong}>Vivos / Muertos:</strong>{" "}
+                    {pedigree.camada.vivos ?? "N/A"} /{" "}
+                    {pedigree.camada.muertos ?? "N/A"}
+                  </p>
+
+                  <p style={styles.text}>
+                    <strong style={styles.strong}>Peso prom. nacimiento:</strong>{" "}
+                    {formatoPeso(pedigree.camada.peso_promedio_nacimiento)}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>📄 Certificado de pie de cría</h2>
+
+        {!pedigree ? (
+          <p style={styles.text}>Cargando certificado...</p>
+        ) : (
+          <>
+            <div style={styles.grid}>
+              <p style={styles.text}>
+                <strong style={styles.strong}>Folio:</strong>{" "}
+                {pedigree.certificado?.folio || "No generado"}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Fecha emisión:</strong>{" "}
+                {pedigree.certificado?.fecha_emision || "No registrada"}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Resultado:</strong>{" "}
+                {pedigree.certificado?.apto_pie_cria
+                  ? "Apto para pie de cría"
+                  : "No apto o datos insuficientes"}
+              </p>
+            </div>
+
+            <p style={styles.text}>
+              {pedigree.certificado?.nota ||
+                "Este certificado solo consulta información existente."}
+            </p>
+
+            <button style={styles.button} onClick={imprimirCertificado}>
+              🖨️ Imprimir / Guardar como PDF
+            </button>
+          </>
+        )}
       </div>
 
       <div style={styles.card}>
