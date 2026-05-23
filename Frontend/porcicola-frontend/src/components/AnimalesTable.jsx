@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { eliminarAnimal } from "../services/animalService";
+import { actualizarAnimal, eliminarAnimal } from "../services/animalService";
 import { useNavigate } from "react-router-dom";
 
 export default function AnimalesTable() {
@@ -75,6 +75,8 @@ export default function AnimalesTable() {
       sexo: animal.sexo || "",
       etapa_actual: animal.etapa_actual || "",
       estado: animal.estado || "activo",
+      madre_id: animal.madre_id || "",
+      padre_id: animal.padre_id || "",
     });
   };
 
@@ -85,10 +87,12 @@ export default function AnimalesTable() {
 
   const handleSave = async (id) => {
     try {
-      await axios.put(`http://127.0.0.1:8000/api/animales/${id}`, {
+      await actualizarAnimal(id, {
         sexo: formEdit.sexo,
         etapa_actual: formEdit.etapa_actual,
         estado: formEdit.estado,
+        madre_id: formEdit.madre_id || null,
+        padre_id: formEdit.padre_id || null,
       });
 
       alert("Animal actualizado correctamente.");
@@ -98,7 +102,12 @@ export default function AnimalesTable() {
       obtenerAnimales();
     } catch (error) {
       console.error(error.response?.data || error);
-      alert("Error al actualizar animal.");
+      alert(
+        error.response?.data?.mensaje ||
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          "Error al actualizar animal."
+      );
     }
   };
 
@@ -110,6 +119,44 @@ export default function AnimalesTable() {
       .replace(/[_-]/g, " ")
       .replace(/\s+/g, " ")
       .toLowerCase();
+  };
+
+  const esHembra = (animal) => {
+    const sexo = normalizarTexto(animal?.sexo);
+    return sexo === "hembra" || sexo === "f" || sexo === "female";
+  };
+
+  const esMacho = (animal) => {
+    const sexo = normalizarTexto(animal?.sexo);
+    return sexo === "macho" || sexo === "m" || sexo === "male";
+  };
+
+  const etiquetaAnimal = (animal) => {
+    if (!animal) return "Sin registro";
+
+    const identificador = animal.identificador_unico || `Animal #${animal.id}`;
+    const sexo = animal.sexo || "sin sexo";
+    const etapa = animal.etapa_actual || "sin etapa";
+    const estado = animal.estado || "sin estado";
+
+    return `${identificador} · ${sexo} · ${etapa} · ${estado}`;
+  };
+
+  const obtenerAnimalPorId = (id) => {
+    if (!id) return null;
+    return animales.find((animal) => Number(animal.id) === Number(id)) || null;
+  };
+
+  const madresDisponibles = (animalActualId) => {
+    return animales.filter(
+      (animal) => Number(animal.id) !== Number(animalActualId) && esHembra(animal)
+    );
+  };
+
+  const padresDisponibles = (animalActualId) => {
+    return animales.filter(
+      (animal) => Number(animal.id) !== Number(animalActualId) && esMacho(animal)
+    );
   };
 
   const estadoVisual = (estado) => {
@@ -220,7 +267,7 @@ export default function AnimalesTable() {
       borderCollapse: "collapse",
       background: "#ffffff",
       color: "#0f172a",
-      minWidth: "760px",
+      minWidth: "1120px",
     },
     th: {
       background: "#e2e8f0",
@@ -335,6 +382,8 @@ export default function AnimalesTable() {
                 <th style={styles.th}>Sexo</th>
                 <th style={styles.th}>Etapa</th>
                 <th style={styles.th}>Estado</th>
+                <th style={styles.th}>Madre</th>
+                <th style={styles.th}>Padre</th>
                 <th style={styles.th}>Acciones</th>
               </tr>
             </thead>
@@ -342,7 +391,7 @@ export default function AnimalesTable() {
             <tbody>
               {animales.length === 0 ? (
                 <tr>
-                  <td style={styles.td} colSpan="6">
+                  <td style={styles.td} colSpan="8">
                     No hay animales con los filtros seleccionados.
                   </td>
                 </tr>
@@ -369,20 +418,70 @@ export default function AnimalesTable() {
                         {editandoId === animal.id ? (
                           <select
                             style={styles.input}
-                            value={formEdit.sexo}
+                            value={formEdit.estado}
                             onChange={(e) =>
                               setFormEdit({
                                 ...formEdit,
-                                sexo: e.target.value,
+                                estado: e.target.value,
                               })
                             }
                           >
-                            <option value="">Sexo</option>
-                            <option value="macho">Macho</option>
-                            <option value="hembra">Hembra</option>
+                            <option value="activo">Activo</option>
+                            <option value="vendido">Vendido</option>
+                            <option value="muerto">Muerto</option>
+                            <option value="descartado">Descartado</option>
+                            <option value="baja">Baja</option>
                           </select>
                         ) : (
-                          animal.sexo || "N/A"
+                          <span style={styles.badge(visual)}>{visual.label}</span>
+                        )}
+                      </td>
+
+                      <td style={styles.td} onClick={(e) => e.stopPropagation()}>
+                        {editandoId === animal.id ? (
+                          <select
+                            style={styles.input}
+                            value={formEdit.madre_id}
+                            onChange={(e) =>
+                              setFormEdit({
+                                ...formEdit,
+                                madre_id: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Sin madre</option>
+                            {madresDisponibles(animal.id).map((madre) => (
+                              <option key={madre.id} value={madre.id}>
+                                {etiquetaAnimal(madre)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          etiquetaAnimal(obtenerAnimalPorId(animal.madre_id))
+                        )}
+                      </td>
+
+                      <td style={styles.td} onClick={(e) => e.stopPropagation()}>
+                        {editandoId === animal.id ? (
+                          <select
+                            style={styles.input}
+                            value={formEdit.padre_id}
+                            onChange={(e) =>
+                              setFormEdit({
+                                ...formEdit,
+                                padre_id: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Sin padre</option>
+                            {padresDisponibles(animal.id).map((padre) => (
+                              <option key={padre.id} value={padre.id}>
+                                {etiquetaAnimal(padre)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          etiquetaAnimal(obtenerAnimalPorId(animal.padre_id))
                         )}
                       </td>
 

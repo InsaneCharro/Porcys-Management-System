@@ -1,13 +1,63 @@
-import { useState } from "react";
-import { crearAnimal } from "../services/animalService";
+import { useEffect, useState } from "react";
+import { crearAnimal, getAnimales } from "../services/animalService";
 
 export default function AnimalForm({ onCreated }) {
+  const [animales, setAnimales] = useState([]);
+
   const [form, setForm] = useState({
     sexo: "",
     etapa_actual: "lechon",
     estado: "activo",
     raza: "Yorkshire",
+    madre_id: "",
+    padre_id: "",
   });
+
+  useEffect(() => {
+    cargarAnimales();
+  }, []);
+
+  const cargarAnimales = async () => {
+    try {
+      const res = await getAnimales();
+      setAnimales(res.data || []);
+    } catch (error) {
+      console.error(error.response?.data || error);
+    }
+  };
+
+  const normalizarTexto = (valor) => {
+    return String(valor ?? "")
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[_-]/g, " ")
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  };
+
+  const esHembra = (animal) => {
+    const sexo = normalizarTexto(animal?.sexo);
+    return sexo === "hembra" || sexo === "f" || sexo === "female";
+  };
+
+  const esMacho = (animal) => {
+    const sexo = normalizarTexto(animal?.sexo);
+    return sexo === "macho" || sexo === "m" || sexo === "male";
+  };
+
+  const etiquetaAnimal = (animal) => {
+    const identificador = animal.identificador_unico || `Animal #${animal.id}`;
+    const sexo = animal.sexo || "sin sexo";
+    const etapa = animal.etapa_actual || "sin etapa";
+    const estado = animal.estado || "sin estado";
+    const raza = animal.raza || "sin raza";
+
+    return `${identificador} · ${sexo} · ${etapa} · ${estado} · ${raza}`;
+  };
+
+  const madresDisponibles = animales.filter(esHembra);
+  const padresDisponibles = animales.filter(esMacho);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -17,15 +67,26 @@ export default function AnimalForm({ onCreated }) {
       return;
     }
 
-    crearAnimal(form)
+    const payload = {
+      ...form,
+      madre_id: form.madre_id || null,
+      padre_id: form.padre_id || null,
+    };
+
+    crearAnimal(payload)
       .then(() => {
         alert("Animal creado.");
+
         setForm({
           sexo: "",
           etapa_actual: "lechon",
           estado: "activo",
           raza: "Yorkshire",
+          madre_id: "",
+          padre_id: "",
         });
+
+        cargarAnimales();
 
         if (onCreated) {
           onCreated();
@@ -33,7 +94,12 @@ export default function AnimalForm({ onCreated }) {
       })
       .catch((err) => {
         console.error(err.response?.data || err);
-        alert(err.response?.data?.message || "Error al crear animal.");
+        alert(
+          err.response?.data?.mensaje ||
+            err.response?.data?.message ||
+            err.response?.data?.error ||
+            "Error al crear animal."
+        );
       });
   };
 
@@ -56,7 +122,7 @@ export default function AnimalForm({ onCreated }) {
     },
     grid: {
       display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+      gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
       gap: "12px",
       alignItems: "end",
     },
@@ -179,15 +245,57 @@ export default function AnimalForm({ onCreated }) {
           />
         </div>
 
+        <div style={styles.field}>
+          <label style={styles.label}>Madre</label>
+          <select
+            style={styles.input}
+            value={form.madre_id}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                madre_id: e.target.value,
+              })
+            }
+          >
+            <option value="">Sin madre registrada</option>
+            {madresDisponibles.map((animal) => (
+              <option key={animal.id} value={animal.id}>
+                {etiquetaAnimal(animal)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div style={styles.field}>
+          <label style={styles.label}>Padre / semental</label>
+          <select
+            style={styles.input}
+            value={form.padre_id}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                padre_id: e.target.value,
+              })
+            }
+          >
+            <option value="">Sin padre registrado</option>
+            {padresDisponibles.map((animal) => (
+              <option key={animal.id} value={animal.id}>
+                {etiquetaAnimal(animal)}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <button type="submit" style={styles.button}>
           Guardar animal
         </button>
       </div>
 
       <p style={styles.note}>
-        Nota: este formulario respeta la lógica actual del backend. Los campos avanzados
-        como corral, clasificación o trazabilidad pueden editarse desde el detalle del animal
-        o módulos especializados.
+        Nota: madre y padre se usan para trazabilidad genética y certificado de
+        pie de cría. Un semental sigue siendo un animal macho registrado, no un
+        modelo separado.
       </p>
     </form>
   );

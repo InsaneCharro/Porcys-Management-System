@@ -55,23 +55,44 @@ class AnimalController extends Controller
     public function store(Request $request)
     {
         try {
+            $datos = $request->validate([
+                'sexo' => 'nullable|string|max:20',
+                'fecha_nacimiento' => 'nullable|date',
+                'etapa_actual' => 'nullable|string|max:50',
+                'estado' => 'nullable|string|max:50',
+                'raza' => 'nullable|string|max:100',
+                'madre_id' => 'nullable|integer|exists:animales,id',
+                'padre_id' => 'nullable|integer|exists:animales,id',
+                'peso' => 'nullable|numeric|min:0',
+            ]);
+
+            $errorParentesco = $this->validarParentesco(
+                null,
+                $datos['madre_id'] ?? null,
+                $datos['padre_id'] ?? null
+            );
+
+            if ($errorParentesco) {
+                return response()->json([
+                    'mensaje' => $errorParentesco,
+                ], 422);
+            }
 
             $animal = Animal::create([
                 'identificador_unico' => $this->generarIdentificador(),
-                'sexo' => $request->sexo ?? 'macho',
-                'fecha_nacimiento' => now(),
-                'etapa_actual' => 'lechon',
-                'estado' => 'activo',
-                'raza' => 'General',
-                'madre_id' => null,
-                'padre_id' => null,
-                'peso' => 0
+                'sexo' => $datos['sexo'] ?? 'macho',
+                'fecha_nacimiento' => $datos['fecha_nacimiento'] ?? now()->toDateString(),
+                'etapa_actual' => $datos['etapa_actual'] ?? 'lechon',
+                'estado' => $datos['estado'] ?? 'activo',
+                'raza' => $datos['raza'] ?? 'General',
+                'madre_id' => $datos['madre_id'] ?? null,
+                'padre_id' => $datos['padre_id'] ?? null,
+                'peso' => $datos['peso'] ?? 0,
             ]);
 
             return response()->json($animal, 201);
 
         } catch (\Throwable $e) {
-
             return response()->json([
                 'error' => $e->getMessage(),
                 'linea' => $e->getLine()
@@ -83,14 +104,38 @@ class AnimalController extends Controller
     {
         $animal = Animal::findOrFail($id);
 
-        $animal->update([
-            'sexo' => $request->sexo,
-            'etapa_actual' => $request->etapa_actual,
-            'estado' => $request->estado,
+        $datos = $request->validate([
+            'sexo' => 'sometimes|nullable|string|max:20',
+            'fecha_nacimiento' => 'sometimes|nullable|date',
+            'etapa_actual' => 'sometimes|nullable|string|max:50',
+            'estado' => 'sometimes|nullable|string|max:50',
+            'raza' => 'sometimes|nullable|string|max:100',
+            'madre_id' => 'sometimes|nullable|integer|exists:animales,id',
+            'padre_id' => 'sometimes|nullable|integer|exists:animales,id',
+            'peso' => 'sometimes|nullable|numeric|min:0',
         ]);
 
+        $madreId = array_key_exists('madre_id', $datos)
+            ? $datos['madre_id']
+            : $animal->madre_id;
+
+        $padreId = array_key_exists('padre_id', $datos)
+            ? $datos['padre_id']
+            : $animal->padre_id;
+
+        $errorParentesco = $this->validarParentesco($animal->id, $madreId, $padreId);
+
+        if ($errorParentesco) {
+            return response()->json([
+                'mensaje' => $errorParentesco,
+            ], 422);
+        }
+
+        $animal->update($datos);
+
         return response()->json([
-            'mensaje' => 'Animal actualizado correctamente'
+            'mensaje' => 'Animal actualizado correctamente',
+            'animal' => $animal->fresh(),
         ]);
     }
 
@@ -98,6 +143,62 @@ class AnimalController extends Controller
     {
         Animal::destroy($id);
         return response()->json(['ok' => true]);
+    }
+
+    private function validarParentesco($animalId, $madreId, $padreId)
+    {
+        if ($animalId && $madreId && (int) $animalId === (int) $madreId) {
+            return 'Un animal no puede ser su propia madre.';
+        }
+
+        if ($animalId && $padreId && (int) $animalId === (int) $padreId) {
+            return 'Un animal no puede ser su propio padre.';
+        }
+
+        if ($madreId) {
+            $madre = Animal::find($madreId);
+
+            if (!$madre || !$this->esHembra($madre->sexo)) {
+                return 'La madre seleccionada debe ser una hembra registrada.';
+            }
+        }
+
+        if ($padreId) {
+            $padre = Animal::find($padreId);
+
+            if (!$padre || !$this->esMacho($padre->sexo)) {
+                return 'El padre seleccionado debe ser un macho registrado.';
+            }
+        }
+
+        return null;
+    }
+
+    private function esHembra($sexo)
+    {
+        $sexoNormalizado = $this->normalizarSexo($sexo);
+
+        return in_array($sexoNormalizado, [
+            'hembra',
+            'f',
+            'female',
+        ]);
+    }
+
+    private function esMacho($sexo)
+    {
+        $sexoNormalizado = $this->normalizarSexo($sexo);
+
+        return in_array($sexoNormalizado, [
+            'macho',
+            'm',
+            'male',
+        ]);
+    }
+
+    private function normalizarSexo($sexo)
+    {
+        return strtolower(trim((string) $sexo));
     }
 
     private function generarIdentificador()
