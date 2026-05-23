@@ -93,6 +93,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         </li>
 
         <li>
+          <Link to="/predicciones">
+            {collapsed ? "🔮" : "🔮 Predicciones"}
+          </Link>
+        </li>
+
+        <li>
           <Link to="/clientes">
             {collapsed ? "👨🏻‍💼" : "👨🏻‍💼 Clientes"}
           </Link>

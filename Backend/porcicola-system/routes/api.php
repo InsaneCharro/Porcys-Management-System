@@ -202,3 +202,15 @@ Route::put('/servicios-reproductivos/{id}/resultado', [ServicioReproductivoContr
 Route::get('/servicios-reproductivos/historial/{hembraId}', [ServicioReproductivoController::class, 'historialPorHembra']);
 Route::get('/servicios-reproductivos/indicadores/resumen', [ServicioReproductivoController::class, 'indicadores']);
 
+/*
+|--------------------------------------------------------------------------
+| PREDICCIONES OPERATIVAS
+|--------------------------------------------------------------------------
+*/
+use App\Http\Controllers\PrediccionController;
+
+Route::get('/predicciones/resumen', [PrediccionController::class, 'resumen']);
+Route::get('/predicciones/alimento', [PrediccionController::class, 'alimento']);
+Route::get('/predicciones/partos', [PrediccionController::class, 'partos']);
+Route::get('/predicciones/corrales', [PrediccionController::class, 'corrales']);
+Route::get('/predicciones/riesgos', [PrediccionController::class, 'riesgos']);
