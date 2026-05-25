@@ -9,6 +9,8 @@ export default function EventosSanitarios() {
   const [medicamentos, setMedicamentos] = useState([]);
   const [eventos, setEventos] = useState([]);
   const [alertas, setAlertas] = useState([]);
+  const [pendientesLechones, setPendientesLechones] = useState([]);
+  const [resumenPendientesLechones, setResumenPendientesLechones] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const [eventoForm, setEventoForm] = useState({
@@ -28,13 +30,19 @@ export default function EventosSanitarios() {
     setLoading(true);
 
     try {
-      const [animalesRes, medicamentosRes, eventosRes, alertasRes] =
-        await Promise.all([
-          axios.get(`${API}/animales`),
-          axios.get(`${API}/medicamentos`),
-          axios.get(`${API}/sanidad`),
-          axios.get(`${API}/sanidad/alertas`),
-        ]);
+      const [
+        animalesRes,
+        medicamentosRes,
+        eventosRes,
+        alertasRes,
+        pendientesLechonesRes,
+      ] = await Promise.all([
+        axios.get(`${API}/animales`),
+        axios.get(`${API}/medicamentos`),
+        axios.get(`${API}/sanidad`),
+        axios.get(`${API}/sanidad/alertas`),
+        axios.get(`${API}/sanidad/pendientes-lechones?todos=1`),
+      ]);
 
       setAnimales(
         (animalesRes.data || []).filter(
@@ -45,6 +53,8 @@ export default function EventosSanitarios() {
       setMedicamentos(medicamentosRes.data || []);
       setEventos(eventosRes.data || []);
       setAlertas(alertasRes.data || []);
+      setPendientesLechones(pendientesLechonesRes.data?.data || []);
+      setResumenPendientesLechones(pendientesLechonesRes.data?.resumen || null);
     } catch (error) {
       console.error(error);
       alert('Error cargando módulo sanitario');
@@ -99,6 +109,87 @@ export default function EventosSanitarios() {
       fecha: new Date().toISOString().split('T')[0],
       observaciones: `Aplicación rápida: ${nombreMedicamento}`,
     });
+  };
+
+  const prepararHierroObligatorio = (control) => {
+    const medicamentoHierro =
+      medicamentos.find((med) =>
+        String(med.nombre || '').toLowerCase().includes('dextr')
+      ) ||
+      medicamentos.find((med) =>
+        String(med.nombre || '').toLowerCase().includes('hierro')
+      );
+
+    if (!medicamentoHierro) {
+      alert('No se encontró medicamento de hierro registrado. Primero registra Hierro o Hierro dextrán en Medicamentos.');
+      return;
+    }
+
+    setTab('aplicar');
+
+    setEventoForm({
+      animal_id: control.animal_id || '',
+      tipo: 'tratamiento',
+      medicamento_id: medicamentoHierro.id,
+      dosis: '1',
+      fecha: new Date().toISOString().split('T')[0],
+      observaciones: `Hierro obligatorio día 3. Estado previo: ${control.estado}. Edad: ${control.edad_dias} días.`,
+    });
+  };
+
+  const textoEstadoHierro = (estado) => {
+    switch (estado) {
+      case 'registrado':
+        return 'Registrado';
+      case 'aun_no_corresponde':
+        return 'Aún no corresponde';
+      case 'pendiente_en_ventana':
+        return 'Pendiente en ventana';
+      case 'pendiente_atrasado':
+        return 'Pendiente atrasado';
+      default:
+        return 'Sin estado';
+    }
+  };
+
+  const estiloEstadoHierro = (estado) => {
+    if (estado === 'registrado') {
+      return {
+        backgroundColor: '#dcfce7',
+        color: '#166534',
+        border: '1px solid #bbf7d0',
+      };
+    }
+
+    if (estado === 'aun_no_corresponde') {
+      return {
+        backgroundColor: '#e0f2fe',
+        color: '#075985',
+        border: '1px solid #bae6fd',
+      };
+    }
+
+    if (estado === 'pendiente_en_ventana') {
+      return {
+        backgroundColor: '#fef3c7',
+        color: '#92400e',
+        border: '1px solid #fde68a',
+      };
+    }
+
+    if (estado === 'pendiente_atrasado') {
+      return {
+        backgroundColor: '#fee2e2',
+        color: '#991b1b',
+        border: '1px solid #fecaca',
+      };
+    }
+
+    return {
+      backgroundColor: '#f1f5f9',
+      color: '#334155',
+      border: '1px solid #cbd5e1',
+    };
   };
 
   const styles = {
@@ -190,6 +281,41 @@ export default function EventosSanitarios() {
       borderRadius: '12px',
       marginBottom: '10px',
     },
+    resumenGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: '14px',
+      marginBottom: '22px',
+    },
+    resumenBox: {
+      padding: '16px',
+      borderRadius: '14px',
+      backgroundColor: '#f8fafc',
+      border: '1px solid #e2e8f0',
+    },
+    resumenNumero: {
+      fontSize: '30px',
+      fontWeight: '800',
+      margin: '4px 0',
+      color: '#0f172a',
+    },
+    badge: {
+      display: 'inline-block',
+      padding: '6px 10px',
+      borderRadius: '999px',
+      fontWeight: '800',
+      fontSize: '12px',
+      whiteSpace: 'nowrap',
+    },
+    smallButton: {
+      padding: '8px 12px',
+      borderRadius: '10px',
+      border: 'none',
+      backgroundColor: '#16a34a',
+      color: '#ffffff',
+      cursor: 'pointer',
+      fontWeight: '700',
+    },
     sectionTitle: {
     color: '#0f172a',
     fontSize: '28px',
@@ -204,7 +330,7 @@ export default function EventosSanitarios() {
       <h1 style={styles.title}>Eventos Sanitarios</h1>
 
       <div style={styles.tabs}>
-        {['protocolos', 'aplicar', 'historial', 'alertas'].map((t) => (
+                {['protocolos', 'obligatorios', 'aplicar', 'historial', 'alertas'].map((t) => (
           <button
             key={t}
             style={styles.tabButton(tab === t)}
@@ -255,6 +381,133 @@ export default function EventosSanitarios() {
               Tratamiento general
             </button>
           </div>
+        </div>
+      )}
+
+      {tab === 'obligatorios' && (
+        <div style={styles.card}>
+          <h2 style={styles.sectionTitle}>Alertas sanitarias obligatorias de lechones</h2>
+
+          <p style={{ color: '#475569', marginTop: '-10px', marginBottom: '22px' }}>
+            Control operativo de hierro obligatorio alrededor del día 3 de vida.
+            Ventana sugerida: día 2 a día 4.
+          </p>
+
+          <div style={styles.resumenGrid}>
+            <div style={styles.resumenBox}>
+              <span>Total revisados</span>
+              <div style={styles.resumenNumero}>
+                {resumenPendientesLechones?.total_revisados ?? pendientesLechones.length}
+              </div>
+              <small>Lechones activos con fecha de nacimiento.</small>
+            </div>
+
+            <div style={styles.resumenBox}>
+              <span>En ventana</span>
+              <div style={styles.resumenNumero}>
+                {resumenPendientesLechones?.pendientes_en_ventana ?? 0}
+              </div>
+              <small>Requieren aplicación dentro del rango válido.</small>
+            </div>
+
+            <div style={styles.resumenBox}>
+              <span>Atrasados</span>
+              <div style={styles.resumenNumero}>
+                {resumenPendientesLechones?.pendientes_atrasados ?? 0}
+              </div>
+              <small>Ya superaron la ventana ideal.</small>
+            </div>
+
+            <div style={styles.resumenBox}>
+              <span>Registrados</span>
+              <div style={styles.resumenNumero}>
+                {resumenPendientesLechones?.registrados ?? 0}
+              </div>
+              <small>Ya tienen hierro detectado.</small>
+            </div>
+          </div>
+
+          {pendientesLechones.length === 0 && (
+            <p>No hay lechones activos para revisar.</p>
+          )}
+
+          {pendientesLechones.length > 0 && (
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Animal</th>
+                  <th style={styles.th}>Edad</th>
+                  <th style={styles.th}>Evento</th>
+                  <th style={styles.th}>Estado</th>
+                  <th style={styles.th}>Registro detectado</th>
+                  <th style={styles.th}>Acción</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {pendientesLechones.map((control) => (
+                  <tr key={`${control.animal_id}-${control.evento_obligatorio}`}>
+                    <td style={styles.td}>
+                      <strong>{control.identificador_unico || `ID ${control.animal_id}`}</strong>
+                      <br />
+                      <small>Nacimiento: {control.fecha_nacimiento || 'Sin fecha'}</small>
+                    </td>
+
+                    <td style={styles.td}>
+                      {control.edad_dias} días
+                    </td>
+
+                    <td style={styles.td}>
+                      {control.nombre_evento || 'Hierro obligatorio día 3'}
+                      <br />
+                      <small>Día objetivo: {control.dia_objetivo ?? 3}</small>
+                    </td>
+
+                    <td style={styles.td}>
+                      <span
+                        style={{
+                          ...styles.badge,
+                          ...estiloEstadoHierro(control.estado),
+                        }}
+                      >
+                        {textoEstadoHierro(control.estado)}
+                      </span>
+                      <br />
+                      <small>{control.mensaje}</small>
+                    </td>
+
+                    <td style={styles.td}>
+                      {control.fecha_registro ? (
+                        <>
+                          <strong>{control.medicamento_detectado || 'Hierro'}</strong>
+                          <br />
+                          <small>
+                            {control.fecha_registro} · {control.fuente_registro}
+                          </small>
+                        </>
+                      ) : (
+                        <span>Sin registro</span>
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {(control.estado === 'pendiente_en_ventana' ||
+                        control.estado === 'pendiente_atrasado') ? (
+                        <button
+                          style={styles.smallButton}
+                          onClick={() => prepararHierroObligatorio(control)}
+                        >
+                          Preparar hierro
+                        </button>
+                      ) : (
+                        <span>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

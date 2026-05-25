@@ -87,6 +87,19 @@ const esControlPesoPendiente = (estado) => {
   return estado === "pendiente_en_ventana" || estado === "pendiente_atrasado";
 };
 
+const obtenerListaHierroObligatorio = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.pendientes)) return payload.pendientes;
+  if (Array.isArray(payload?.animales)) return payload.animales;
+
+  return [];
+};
+
+const esControlHierroPendiente = (estado) => {
+  return estado === "pendiente_en_ventana" || estado === "pendiente_atrasado";
+};
+
 function KpiCard({ icon, title, value, subtitle, onClick, danger = false }) {
   return (
     <div
@@ -159,6 +172,8 @@ export default function Dashboard() {
   const [ventasTipos, setVentasTipos] = useState([]);
   const [pesosObligatorios, setPesosObligatorios] = useState([]);
   const [pesosObligatoriosError, setPesosObligatoriosError] = useState("");
+  const [hierroObligatorio, setHierroObligatorio] = useState([]);
+  const [hierroObligatorioError, setHierroObligatorioError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -185,6 +200,16 @@ export default function Dashboard() {
       }
     };
 
+    const optionalHierroPendiente = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/sanidad/pendientes-lechones?todos=1`);
+        return response.data;
+      } catch (err) {
+        console.warn("No se pudo cargar /sanidad/pendientes-lechones", err);
+        return null;
+      }
+    };
+
     const cargarDashboard = async () => {
       try {
         setLoading(true);
@@ -192,12 +217,20 @@ export default function Dashboard() {
 
         const dashboardResponse = await axios.get(`${API_URL}/dashboard`);
 
-        const [pesos, ventas, clientes, tipos, pesosPendientesPayload] = await Promise.all([
+        const [
+          pesos,
+          ventas,
+          clientes,
+          tipos,
+          pesosPendientesPayload,
+          hierroPendientePayload
+        ] = await Promise.all([
           optionalGet("/dashboard/pesos-evolucion", []),
           optionalGet("/ventas/grafica", []),
           optionalGet("/ventas/clientes", []),
           optionalGet("/ventas/tipos", []),
-          optionalPesosPendientes()
+          optionalPesosPendientes(),
+          optionalHierroPendiente()
         ]);
 
         if (!mounted) return;
@@ -211,6 +244,13 @@ export default function Dashboard() {
         setPesosObligatoriosError(
           pesosPendientesPayload === null
             ? "No se pudieron cargar las alertas de pesos obligatorios."
+            : ""
+        );
+
+        setHierroObligatorio(obtenerListaHierroObligatorio(hierroPendientePayload));
+        setHierroObligatorioError(
+          hierroPendientePayload === null
+            ? "No se pudieron cargar las alertas sanitarias obligatorias de lechones."
             : ""
         );
       } catch (err) {
@@ -313,6 +353,64 @@ export default function Dashboard() {
     estadoVisualPesosObligatorios === "critico"
       ? "medicamento-alert"
       : estadoVisualPesosObligatorios === "moderado"
+      ? "parto-alert"
+      : "destete-alert";
+
+  const resumenHierroObligatorio = useMemo(() => {
+    const resumen = {
+      totalLechones: hierroObligatorio.length,
+      registrados: 0,
+      aunNoCorresponde: 0,
+      pendientesVentana: 0,
+      pendientesAtrasados: 0,
+      pendientesTotal: 0
+    };
+
+    hierroObligatorio.forEach((control) => {
+      const estado = control?.estado || "sin_estado";
+
+      if (estado === "registrado") {
+        resumen.registrados += 1;
+      }
+
+      if (estado === "aun_no_corresponde") {
+        resumen.aunNoCorresponde += 1;
+      }
+
+      if (!esControlHierroPendiente(estado)) return;
+
+      resumen.pendientesTotal += 1;
+
+      if (estado === "pendiente_en_ventana") {
+        resumen.pendientesVentana += 1;
+      }
+
+      if (estado === "pendiente_atrasado") {
+        resumen.pendientesAtrasados += 1;
+      }
+    });
+
+    return resumen;
+  }, [hierroObligatorio]);
+
+  const estadoVisualHierroObligatorio =
+    resumenHierroObligatorio.pendientesAtrasados > 0
+      ? "critico"
+      : resumenHierroObligatorio.pendientesVentana > 0
+      ? "moderado"
+      : "correcto";
+
+  const mensajeHierroObligatorio =
+    estadoVisualHierroObligatorio === "critico"
+      ? "Hay lechones con hierro obligatorio atrasado. Revisar Sanidad."
+      : estadoVisualHierroObligatorio === "moderado"
+      ? "Hay lechones dentro de ventana válida para aplicar hierro."
+      : "Hierro obligatorio al día.";
+
+  const claseAlertaHierro =
+    estadoVisualHierroObligatorio === "critico"
+      ? "medicamento-alert"
+      : estadoVisualHierroObligatorio === "moderado"
       ? "parto-alert"
       : "destete-alert";
 
@@ -533,6 +631,15 @@ export default function Dashboard() {
         />
 
         <KpiCard
+          icon="💉"
+          title="Hierro obligatorio"
+          value={formatNumber(resumenHierroObligatorio.pendientesTotal)}
+          subtitle={`Atrasados: ${formatNumber(resumenHierroObligatorio.pendientesAtrasados)} · En ventana: ${formatNumber(resumenHierroObligatorio.pendientesVentana)}`}
+          onClick={() => navigate("/sanidad")}
+          danger={resumenHierroObligatorio.pendientesAtrasados > 0}
+        />
+
+        <KpiCard
           icon="☠️"
           title="Bajas 30 días"
           value={formatNumber(mortalidad.ultimos_30_dias)}
@@ -694,6 +801,95 @@ export default function Dashboard() {
             <h3>Animales revisados</h3>
             <h1>{formatNumber(resumenPesosObligatorios.totalAnimales)}</h1>
             <p>Animales devueltos por el control operativo de pesos.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="section">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "14px",
+            flexWrap: "wrap"
+          }}
+        >
+          <div>
+            <h2 style={{ marginBottom: "8px" }}>💉 Hierro obligatorio</h2>
+            <p style={{ color: "#475569", margin: 0 }}>
+              Seguimiento sanitario de hierro obligatorio alrededor del día 3 de vida.
+            </p>
+          </div>
+
+          <button
+            onClick={() => navigate("/sanidad")}
+            style={{
+              background: "#16a34a",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "12px",
+              padding: "11px 16px",
+              fontWeight: 900,
+              cursor: "pointer",
+              boxShadow: "0 8px 22px rgba(22, 163, 74, 0.22)"
+            }}
+          >
+            Ver eventos sanitarios
+          </button>
+        </div>
+
+        {hierroObligatorioError ? (
+          <div
+            style={{
+              marginTop: "16px",
+              padding: "14px 16px",
+              borderRadius: "14px",
+              background: "#fee2e2",
+              border: "1px solid #fecaca",
+              color: "#991b1b",
+              fontWeight: 800
+            }}
+          >
+            {hierroObligatorioError}
+          </div>
+        ) : null}
+
+        <div className="alerts-grid">
+          <div className={`alert-box ${claseAlertaHierro}`}>
+            <h3>Estado sanitario</h3>
+            <h1>{formatNumber(resumenHierroObligatorio.pendientesTotal)}</h1>
+            <p>{mensajeHierroObligatorio}</p>
+          </div>
+
+          <div className="alert-box parto-alert">
+            <h3>En ventana</h3>
+            <h1>{formatNumber(resumenHierroObligatorio.pendientesVentana)}</h1>
+            <p>Lechones dentro de la ventana sugerida: día 2 a día 4.</p>
+          </div>
+
+          <div className="alert-box medicamento-alert">
+            <h3>Atrasados</h3>
+            <h1>{formatNumber(resumenHierroObligatorio.pendientesAtrasados)}</h1>
+            <p>Lechones que ya superaron la ventana ideal sin registro detectado.</p>
+          </div>
+
+          <div className="alert-box destete-alert">
+            <h3>Registrados</h3>
+            <h1>{formatNumber(resumenHierroObligatorio.registrados)}</h1>
+            <p>Lechones con hierro detectado en eventos sanitarios o aplicaciones médicas.</p>
+          </div>
+
+          <div className="alert-box crecimiento-alert">
+            <h3>Aún no corresponde</h3>
+            <h1>{formatNumber(resumenHierroObligatorio.aunNoCorresponde)}</h1>
+            <p>Lechones menores a 2 días de edad.</p>
+          </div>
+
+          <div className="alert-box">
+            <h3>Lechones revisados</h3>
+            <h1>{formatNumber(resumenHierroObligatorio.totalLechones)}</h1>
+            <p>Lechones activos con fecha de nacimiento revisados por el control sanitario.</p>
           </div>
         </div>
       </div>
