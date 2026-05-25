@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { registrarPeso, getPesosPendientes } from "../services/pesoService";import { getPedigreeAnimal } from "../services/animalService";
+import { useNavigate, useParams } from "react-router-dom";
+import { registrarPeso, getPesosPendientes } from "../services/pesoService";
+import { getPedigreeAnimal } from "../services/animalService";
 import axios from "axios";
 
 import {
   aplicarMedicamento,
+  obtenerCartillaSanitariaAnimal,
   obtenerMedicamentos,
 } from "../services/sanidadService";
 
@@ -33,6 +35,7 @@ const API = "http://127.0.0.1:8000/api";
 
 export default function AnimalDetalle() {
   const { id } = useParams();
+  const navigate = useNavigate();
 
   const [animal, setAnimal] = useState(null);
   const [pedigree, setPedigree] = useState(null);
@@ -47,6 +50,7 @@ export default function AnimalDetalle() {
   const [dosis, setDosis] = useState("");
   const [stock, setStock] = useState(0);
   const [eventosSanitarios, setEventosSanitarios] = useState([]);
+  const [cartillaSanitaria, setCartillaSanitaria] = useState(null);
 
   const [corrales, setCorrales] = useState([]);
   const [corralId, setCorralId] = useState("");
@@ -74,7 +78,7 @@ export default function AnimalDetalle() {
         const [
           animalRes,
           pesosRes,
-          eventosRes,
+          cartillaSanitariaRes,
           corralesRes,
           muertesRes,
           pedigreeRes,
@@ -82,7 +86,7 @@ export default function AnimalDetalle() {
         ] = await Promise.all([
           axios.get(`${API}/animales/${id}`),
           axios.get(`${API}/pesos/${id}`),
-          axios.get(`${API}/medicamentos/historial/${id}`),
+          obtenerCartillaSanitariaAnimal(id),
           axios.get(`${API}/corrales`),
           axios.get(`${API}/animales/${id}/muertes`),
           getPedigreeAnimal(id),
@@ -91,7 +95,10 @@ export default function AnimalDetalle() {
 
         setAnimal(animalRes.data);
         setPesos(pesosRes.data || []);
-        setEventosSanitarios(eventosRes.data || []);
+        setCartillaSanitaria(cartillaSanitariaRes || null);
+        setEventosSanitarios(
+          cartillaSanitariaRes?.historial?.historial_unificado || []
+        );
         setCorrales(corralesRes.data || []);
         setHistorialMuertes(muertesRes.data || []);
         setPedigree(pedigreeRes.data || null);
@@ -285,10 +292,7 @@ export default function AnimalDetalle() {
       setDosis("");
       setMedicamentoId("");
 
-      const eventosRes = await axios.get(`${API}/medicamentos/historial/${id}`);
-      setEventosSanitarios(eventosRes.data || []);
-
-      obtenerMedicamentos().then(setMedicamentos);
+      await cargarDatos();
     } catch (err) {
       console.error(err.response?.data || err);
       alert(err.message || "Error al aplicar medicamento.");
@@ -873,6 +877,73 @@ const renderControlPesoObligatorio = (clave, titulo) => {
   const eventosOrdenados = [...eventosSanitarios].sort(
     (a, b) => new Date(b.fecha) - new Date(a.fecha)
   );
+
+  const controlHierroSanitario = cartillaSanitaria?.control_hierro || null;
+
+  const historialSanitarioOrdenado = (
+    cartillaSanitaria?.historial?.historial_unificado?.length
+      ? cartillaSanitaria.historial.historial_unificado
+      : eventosOrdenados
+  ).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+  const textoEstadoSanitario = (estado) => {
+    switch (estado) {
+      case "registrado":
+        return "Registrado";
+      case "aun_no_corresponde":
+        return "Aún no corresponde";
+      case "pendiente_en_ventana":
+        return "Pendiente en ventana";
+      case "pendiente_atrasado":
+        return "Pendiente atrasado";
+      default:
+        return "Sin control obligatorio";
+    }
+  };
+
+  const estiloEstadoSanitario = (estado) => {
+    if (estado === "registrado") return styles.badgeSuccess;
+    if (estado === "aun_no_corresponde") return styles.badgeNeutral;
+    if (estado === "pendiente_en_ventana") return styles.badgeInfo;
+    if (estado === "pendiente_atrasado") return styles.badgeWarning;
+
+    return styles.badgeNeutral;
+  };
+
+  const textoFuenteSanitaria = (fuente) => {
+    if (fuente === "eventos_sanitarios") return "Eventos sanitarios";
+    if (fuente === "aplicaciones_medicas") return "Aplicaciones médicas";
+
+    return fuente || "Fuente no registrada";
+  };
+
+  const prepararHierroDesdeDetalle = () => {
+    const medicamentoHierro =
+      medicamentos.find((med) =>
+        String(med.nombre || "").toLowerCase().includes("dextr")
+      ) ||
+      medicamentos.find((med) =>
+        String(med.nombre || "").toLowerCase().includes("hierro")
+      );
+
+    if (!medicamentoHierro) {
+      alert("No se encontró medicamento de hierro. Regístralo primero en Medicamentos o Sanidad.");
+      navigate("/sanidad");
+      return;
+    }
+
+    setMedicamentoId(String(medicamentoHierro.id));
+    setDosis("1");
+    setMostrarModal(true);
+  };
+
+  const nombreMedicamentoSanitario = (evento) => {
+    if (typeof evento?.medicamento === "string") {
+      return evento.medicamento;
+    }
+
+    return evento?.medicamento?.nombre || "Medicamento no registrado";
+  };
 
   const styles = {
     page: {

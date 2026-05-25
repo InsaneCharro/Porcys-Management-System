@@ -58,3 +58,19 @@ export async function obtenerMedicamentos() {
 
   return json;
 }
+
+export async function obtenerCartillaSanitariaAnimal(animalId) {
+  const res = await fetch(`${API}/sanidad/cartilla/${animalId}`, {
+    headers: {
+      "Accept": "application/json",
+    },
+  });
+
+  const json = await leerRespuesta(res);
+
+  if (!res.ok) {
+    throw new Error(json.error || json.message || "Error al obtener cartilla sanitaria");
+  }
+
+  return json;
+}

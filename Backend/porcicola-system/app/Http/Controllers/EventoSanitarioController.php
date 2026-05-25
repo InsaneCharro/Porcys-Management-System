@@ -98,6 +98,78 @@ class EventoSanitarioController extends Controller
             ->get();
     }
 
+    public function cartillaAnimal($animalId)
+    {
+        $animal = Animal::findOrFail($animalId);
+
+        $eventosSanitarios = EventoSanitario::with('medicamento')
+            ->where('animal_id', $animal->id)
+            ->orderByDesc('fecha')
+            ->get()
+            ->map(function ($evento) {
+                return [
+                    'id' => 'evento_sanitario_' . $evento->id,
+                    'registro_id' => $evento->id,
+                    'fuente' => 'eventos_sanitarios',
+                    'tipo' => $evento->tipo,
+                    'medicamento' => optional($evento->medicamento)->nombre ?: 'Sin medicamento vinculado',
+                    'dosis' => $evento->dosis,
+                    'fecha' => optional($evento->fecha)->format('Y-m-d'),
+                    'observaciones' => $evento->observaciones,
+                ];
+            })
+            ->values();
+
+        $aplicacionesMedicas = AplicacionMedica::where('animal_id', $animal->id)
+            ->orderByDesc('fecha')
+            ->get()
+            ->map(function ($aplicacion) {
+                return [
+                    'id' => 'aplicacion_medica_' . $aplicacion->id,
+                    'registro_id' => $aplicacion->id,
+                    'fuente' => 'aplicaciones_medicas',
+                    'tipo' => 'aplicacion',
+                    'medicamento' => $aplicacion->medicamento,
+                    'dosis' => $aplicacion->dosis,
+                    'fecha' => $aplicacion->fecha,
+                    'observaciones' => null,
+                ];
+            })
+            ->values();
+
+        $historialUnificado = $eventosSanitarios
+            ->concat($aplicacionesMedicas)
+            ->sortByDesc('fecha')
+            ->values();
+
+        return response()->json([
+            'animal' => [
+                'id' => $animal->id,
+                'identificador_unico' => $animal->identificador_unico,
+                'sexo' => $animal->sexo,
+                'etapa_actual' => $animal->etapa_actual,
+                'estado' => $animal->estado,
+                'fecha_nacimiento' => $animal->fecha_nacimiento,
+            ],
+            'control_hierro' => $this->construirControlHierroAnimal($animal),
+            'historial' => [
+                'eventos_sanitarios' => $eventosSanitarios,
+                'aplicaciones_medicas' => $aplicacionesMedicas,
+                'historial_unificado' => $historialUnificado,
+                'total_eventos_sanitarios' => $eventosSanitarios->count(),
+                'total_aplicaciones_medicas' => $aplicacionesMedicas->count(),
+                'total_registros' => $historialUnificado->count(),
+            ],
+            'trazabilidad' => [
+                'fuentes_consultadas' => [
+                    'eventos_sanitarios',
+                    'aplicaciones_medicas',
+                ],
+                'nota' => 'La cartilla sanitaria consulta eventos sanitarios formales y aplicaciones médicas históricas.',
+            ],
+        ]);
+    }
+
     public function alertas()
     {
         $controlesHierro = $this->obtenerControlesHierroLechones();
@@ -175,41 +247,54 @@ class EventoSanitarioController extends Controller
         $controles = [];
 
         foreach ($lechones as $animal) {
-            $edad = \Carbon\Carbon::parse($animal->fecha_nacimiento)
-                ->startOfDay()
-                ->diffInDays(now()->startOfDay(), false);
+            $control = $this->construirControlHierroAnimal($animal);
 
-            $registroHierro = $this->buscarRegistroHierro($animal->id);
-
-            if ($registroHierro) {
-                $estado = 'registrado';
-            } elseif ($edad < 2) {
-                $estado = 'aun_no_corresponde';
-            } elseif ($edad <= 4) {
-                $estado = 'pendiente_en_ventana';
-            } else {
-                $estado = 'pendiente_atrasado';
+            if ($control) {
+                $controles[] = $control;
             }
-
-            $controles[] = [
-                'animal_id' => $animal->id,
-                'identificador_unico' => $animal->identificador_unico,
-                'fecha_nacimiento' => $animal->fecha_nacimiento,
-                'edad_dias' => $edad,
-                'evento_obligatorio' => 'hierro_dia_3',
-                'nombre_evento' => 'Hierro obligatorio día 3',
-                'dia_objetivo' => 3,
-                'ventana_inicio' => 2,
-                'ventana_fin' => 4,
-                'estado' => $estado,
-                'mensaje' => $this->construirMensajeHierro($estado, $edad),
-                'medicamento_detectado' => $registroHierro['medicamento'] ?? null,
-                'fecha_registro' => $registroHierro['fecha'] ?? null,
-                'fuente_registro' => $registroHierro['fuente'] ?? null,
-            ];
         }
 
         return $controles;
+    }
+
+    private function construirControlHierroAnimal(Animal $animal): ?array
+    {
+        if ($animal->etapa_actual !== 'lechon' || !$animal->fecha_nacimiento) {
+            return null;
+        }
+
+        $edad = \Carbon\Carbon::parse($animal->fecha_nacimiento)
+            ->startOfDay()
+            ->diffInDays(now()->startOfDay(), false);
+
+        $registroHierro = $this->buscarRegistroHierro($animal->id);
+
+        if ($registroHierro) {
+            $estado = 'registrado';
+        } elseif ($edad < 2) {
+            $estado = 'aun_no_corresponde';
+        } elseif ($edad <= 4) {
+            $estado = 'pendiente_en_ventana';
+        } else {
+            $estado = 'pendiente_atrasado';
+        }
+
+        return [
+            'animal_id' => $animal->id,
+            'identificador_unico' => $animal->identificador_unico,
+            'fecha_nacimiento' => $animal->fecha_nacimiento,
+            'edad_dias' => $edad,
+            'evento_obligatorio' => 'hierro_dia_3',
+            'nombre_evento' => 'Hierro obligatorio día 3',
+            'dia_objetivo' => 3,
+            'ventana_inicio' => 2,
+            'ventana_fin' => 4,
+            'estado' => $estado,
+            'mensaje' => $this->construirMensajeHierro($estado, $edad),
+            'medicamento_detectado' => $registroHierro['medicamento'] ?? null,
+            'fecha_registro' => $registroHierro['fecha'] ?? null,
+            'fuente_registro' => $registroHierro['fuente'] ?? null,
+        ];
     }
 
     private function buscarRegistroHierro(int $animalId): ?array

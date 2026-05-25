@@ -173,6 +173,7 @@ use App\Http\Controllers\EventoSanitarioController;
 Route::get('/sanidad', [EventoSanitarioController::class, 'index']);
 Route::post('/sanidad', [EventoSanitarioController::class, 'store']);
 Route::get('/sanidad/pendientes-lechones', [EventoSanitarioController::class, 'pendientesLechones']);
+Route::get('/sanidad/cartilla/{animalId}', [EventoSanitarioController::class, 'cartillaAnimal']);
 Route::get('/sanidad/historial/{animalId}', [EventoSanitarioController::class, 'historial']);
 Route::get('/sanidad/alertas', [EventoSanitarioController::class, 'alertas']);
 
