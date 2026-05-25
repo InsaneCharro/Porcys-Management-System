@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import "../styles/dashboard.css";
 import { useNavigate } from "react-router-dom";
+import { getPesosPendientes } from "../services/pesoService";
 
 import {
   Chart as ChartJS,
@@ -55,6 +56,35 @@ const kg = (value) => `${formatNumber(value, 2)} kg`;
 const readable = (value) => {
   if (!value) return "Sin dato";
   return String(value).replaceAll("_", " ");
+};
+
+const obtenerListaPesosObligatorios = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.animales)) return payload.animales;
+  if (Array.isArray(payload?.pendientes)) return payload.pendientes;
+
+  return [];
+};
+
+const obtenerControlPeso = (item, clave) => {
+  return (
+    item?.pesos?.[clave] ||
+    item?.[clave] ||
+    item?.[`peso_${clave}`] ||
+    null
+  );
+};
+
+const obtenerEstadoControlPeso = (control) => {
+  if (!control) return "no_calculado";
+  if (control.registrado) return "registrado";
+
+  return control.estado || "no_calculado";
+};
+
+const esControlPesoPendiente = (estado) => {
+  return estado === "pendiente_en_ventana" || estado === "pendiente_atrasado";
 };
 
 function KpiCard({ icon, title, value, subtitle, onClick, danger = false }) {
@@ -127,6 +157,8 @@ export default function Dashboard() {
   const [ventasDia, setVentasDia] = useState([]);
   const [ventasClientes, setVentasClientes] = useState([]);
   const [ventasTipos, setVentasTipos] = useState([]);
+  const [pesosObligatorios, setPesosObligatorios] = useState([]);
+  const [pesosObligatoriosError, setPesosObligatoriosError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -143,6 +175,16 @@ export default function Dashboard() {
       }
     };
 
+    const optionalPesosPendientes = async () => {
+      try {
+        const response = await getPesosPendientes({ todos: 1 });
+        return response.data;
+      } catch (err) {
+        console.warn("No se pudo cargar /pesos/pendientes", err);
+        return null;
+      }
+    };
+
     const cargarDashboard = async () => {
       try {
         setLoading(true);
@@ -150,11 +192,12 @@ export default function Dashboard() {
 
         const dashboardResponse = await axios.get(`${API_URL}/dashboard`);
 
-        const [pesos, ventas, clientes, tipos] = await Promise.all([
+        const [pesos, ventas, clientes, tipos, pesosPendientesPayload] = await Promise.all([
           optionalGet("/dashboard/pesos-evolucion", []),
           optionalGet("/ventas/grafica", []),
           optionalGet("/ventas/clientes", []),
-          optionalGet("/ventas/tipos", [])
+          optionalGet("/ventas/tipos", []),
+          optionalPesosPendientes()
         ]);
 
         if (!mounted) return;
@@ -164,6 +207,12 @@ export default function Dashboard() {
         setVentasDia(toArray(ventas));
         setVentasClientes(toArray(clientes));
         setVentasTipos(toArray(tipos));
+        setPesosObligatorios(obtenerListaPesosObligatorios(pesosPendientesPayload));
+        setPesosObligatoriosError(
+          pesosPendientesPayload === null
+            ? "No se pudieron cargar las alertas de pesos obligatorios."
+            : ""
+        );
       } catch (err) {
         console.error(err);
 
@@ -205,6 +254,67 @@ export default function Dashboard() {
   const consumosRecientes = toArray(alimentacion.consumos_recientes);
   const bajasRecientes = toArray(mortalidad.recientes);
   const alertasParto = toArray(reproduccion.alertas_parto || data?.alertas_parto);
+
+  const resumenPesosObligatorios = useMemo(() => {
+    const resumen = {
+      totalAnimales: pesosObligatorios.length,
+      pendientesVentana: 0,
+      pendientesAtrasados: 0,
+      pendientesDia10: 0,
+      pendientesDia28: 0,
+      pendientesTotal: 0
+    };
+
+    pesosObligatorios.forEach((item) => {
+      ["dia_10", "dia_28"].forEach((clave) => {
+        const control = obtenerControlPeso(item, clave);
+        const estado = obtenerEstadoControlPeso(control);
+
+        if (!esControlPesoPendiente(estado)) return;
+
+        resumen.pendientesTotal += 1;
+
+        if (estado === "pendiente_en_ventana") {
+          resumen.pendientesVentana += 1;
+        }
+
+        if (estado === "pendiente_atrasado") {
+          resumen.pendientesAtrasados += 1;
+        }
+
+        if (clave === "dia_10") {
+          resumen.pendientesDia10 += 1;
+        }
+
+        if (clave === "dia_28") {
+          resumen.pendientesDia28 += 1;
+        }
+      });
+    });
+
+    return resumen;
+  }, [pesosObligatorios]);
+
+  const estadoVisualPesosObligatorios =
+    resumenPesosObligatorios.pendientesAtrasados > 0
+      ? "critico"
+      : resumenPesosObligatorios.pendientesVentana > 0
+      ? "moderado"
+      : "correcto";
+
+  const mensajePesosObligatorios =
+    estadoVisualPesosObligatorios === "critico"
+      ? "Hay pesos obligatorios atrasados. Requieren atención inmediata."
+      : estadoVisualPesosObligatorios === "moderado"
+      ? "Hay lechones dentro de ventana válida para captura."
+      : "Pesos obligatorios al día.";
+
+  const claseAlertaPesos =
+    estadoVisualPesosObligatorios === "critico"
+      ? "medicamento-alert"
+      : estadoVisualPesosObligatorios === "moderado"
+      ? "parto-alert"
+      : "destete-alert";
 
   const chartOptions = {
     responsive: true,
@@ -414,6 +524,15 @@ export default function Dashboard() {
         />
 
         <KpiCard
+          icon="⚖️"
+          title="Pesos obligatorios"
+          value={formatNumber(resumenPesosObligatorios.pendientesTotal)}
+          subtitle={`Atrasados: ${formatNumber(resumenPesosObligatorios.pendientesAtrasados)} · En ventana: ${formatNumber(resumenPesosObligatorios.pendientesVentana)}`}
+          onClick={() => navigate("/pesos-pendientes")}
+          danger={resumenPesosObligatorios.pendientesAtrasados > 0}
+        />
+
+        <KpiCard
           icon="☠️"
           title="Bajas 30 días"
           value={formatNumber(mortalidad.ultimos_30_dias)}
@@ -488,6 +607,95 @@ export default function Dashboard() {
           onClick={() => navigate("/alertas")}
           danger={n(alertasGenerales.criticas) > 0}
         />
+      </div>
+
+      <div className="section">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "14px",
+            flexWrap: "wrap"
+          }}
+        >
+          <div>
+            <h2 style={{ marginBottom: "8px" }}>⚖️ Pesos obligatorios</h2>
+            <p style={{ color: "#475569", margin: 0 }}>
+              Seguimiento operativo de pesos día 10 y día 28.
+            </p>
+          </div>
+
+          <button
+            onClick={() => navigate("/pesos-pendientes")}
+            style={{
+              background: "#2563eb",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "12px",
+              padding: "11px 16px",
+              fontWeight: 900,
+              cursor: "pointer",
+              boxShadow: "0 8px 22px rgba(37, 99, 235, 0.22)"
+            }}
+          >
+            Ver pesos pendientes
+          </button>
+        </div>
+
+        {pesosObligatoriosError ? (
+          <div
+            style={{
+              marginTop: "16px",
+              padding: "14px 16px",
+              borderRadius: "14px",
+              background: "#fee2e2",
+              border: "1px solid #fecaca",
+              color: "#991b1b",
+              fontWeight: 800
+            }}
+          >
+            {pesosObligatoriosError}
+          </div>
+        ) : null}
+
+        <div className="alerts-grid">
+          <div className={`alert-box ${claseAlertaPesos}`}>
+            <h3>Estado operativo</h3>
+            <h1>{formatNumber(resumenPesosObligatorios.pendientesTotal)}</h1>
+            <p>{mensajePesosObligatorios}</p>
+          </div>
+
+          <div className="alert-box parto-alert">
+            <h3>Pendientes en ventana</h3>
+            <h1>{formatNumber(resumenPesosObligatorios.pendientesVentana)}</h1>
+            <p>Capturas que todavía están dentro del rango válido.</p>
+          </div>
+
+          <div className="alert-box medicamento-alert">
+            <h3>Pendientes atrasados</h3>
+            <h1>{formatNumber(resumenPesosObligatorios.pendientesAtrasados)}</h1>
+            <p>Capturas vencidas que ya pasaron su ventana ideal.</p>
+          </div>
+
+          <div className="alert-box crecimiento-alert">
+            <h3>Pendientes día 10</h3>
+            <h1>{formatNumber(resumenPesosObligatorios.pendientesDia10)}</h1>
+            <p>Controles obligatorios correspondientes al día 10.</p>
+          </div>
+
+          <div className="alert-box destete-alert">
+            <h3>Pendientes día 28</h3>
+            <h1>{formatNumber(resumenPesosObligatorios.pendientesDia28)}</h1>
+            <p>Controles obligatorios correspondientes al día 28.</p>
+          </div>
+
+          <div className="alert-box">
+            <h3>Animales revisados</h3>
+            <h1>{formatNumber(resumenPesosObligatorios.totalAnimales)}</h1>
+            <p>Animales devueltos por el control operativo de pesos.</p>
+          </div>
+        </div>
       </div>
 
       <div className="section">
