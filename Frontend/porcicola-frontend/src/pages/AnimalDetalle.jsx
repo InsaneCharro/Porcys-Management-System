@@ -707,7 +707,21 @@ export default function AnimalDetalle() {
               <div class="card">
                 <div class="label">Resultado</div>
                 <div class="valor">
-                  ${certificado.apto_pie_cria ? "Apto para pie de cría" : "No apto / datos insuficientes"}
+                  ${limpiarHtml(certificado.resultado || "No calculado")}
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="label">Puede emitirse</div>
+                <div class="valor">
+                  ${certificado.puede_emitirse ? "Sí" : "No recomendable"}
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="label">Nivel de riesgo</div>
+                <div class="valor">
+                  ${limpiarHtml(certificado.nivel_riesgo || "No calculado")}
                 </div>
               </div>
 
@@ -727,7 +741,7 @@ export default function AnimalDetalle() {
             </div>
 
             <div class="nota ${certificado.apto_pie_cria ? "" : "no-apto"}">
-              ${limpiarHtml(clasificacion.motivo)}
+              ${limpiarHtml(certificado.motivo_resultado || clasificacion.motivo)}
               <br />
               ${limpiarHtml(certificado.nota)}
               <br />
@@ -1133,10 +1147,20 @@ export default function AnimalDetalle() {
               </p>
 
               <p style={styles.text}>
-                <strong style={styles.strong}>Estado para certificado:</strong>{" "}
-                {pedigree.certificado?.apto_pie_cria
-                  ? "Apto para pie de cría"
-                  : "No apto o con datos insuficientes"}
+                <strong style={styles.strong}>Resultado:</strong>{" "}
+                {pedigree.certificado?.resultado || "No calculado"}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Puede emitirse:</strong>{" "}
+                {pedigree.certificado?.puede_emitirse
+                  ? "Sí"
+                  : "No recomendable"}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Nivel de riesgo:</strong>{" "}
+                {pedigree.certificado?.nivel_riesgo || "No calculado"}
               </p>
             </div>
 
@@ -1210,6 +1234,12 @@ export default function AnimalDetalle() {
                   : "No apto o datos insuficientes"}
               </p>
             </div>
+
+            <p style={styles.text}>
+              <strong style={styles.strong}>Motivo:</strong>{" "}
+              {pedigree.certificado?.motivo_resultado ||
+                "No hay motivo calculado para el certificado."}
+            </p>
 
             <p style={styles.text}>
               {pedigree.certificado?.nota ||

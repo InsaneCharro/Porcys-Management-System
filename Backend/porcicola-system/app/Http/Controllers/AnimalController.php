@@ -248,7 +248,7 @@ class AnimalController extends Controller
 
         $clasificacion = $this->clasificacionProductiva($animal, $pesosRelevantes);
         $calidadPedigree = $this->calidadPedigree($animal, $pesosRelevantes);
-
+        $evaluacionCertificado = $this->evaluarCertificadoPieCria($clasificacion, $calidadPedigree);
         return response()->json([
             'animal' => $this->resumenAnimal($animal),
             'genealogia' => [
@@ -281,16 +281,20 @@ class AnimalController extends Controller
             'certificado' => [
                 'folio' => 'CERT-PC-' . str_pad($animal->id, 5, '0', STR_PAD_LEFT),
                 'fecha_emision' => now()->toDateString(),
-                'apto_pie_cria' => in_array($clasificacion['tipo'], [
-                    'pie_cria',
-                    'reproductor',
-                    'reproductora',
-                    'semental'
-                ]),
-                'certificado_completo' => $calidadPedigree['completo'],
+
+                'apto_pie_cria' => $evaluacionCertificado['apto_productivo'],
+                'certificado_completo' => $evaluacionCertificado['certificado_completo'],
+                'certificado_con_observaciones' => $evaluacionCertificado['certificado_con_observaciones'],
+                'puede_emitirse' => $evaluacionCertificado['puede_emitirse'],
+
+                'resultado' => $evaluacionCertificado['resultado'],
+                'nivel_riesgo' => $evaluacionCertificado['nivel_riesgo'],
+                'motivo_resultado' => $evaluacionCertificado['motivo'],
+
                 'calidad_documental' => $calidadPedigree['porcentaje'],
                 'nivel_documental' => $calidadPedigree['nivel'],
                 'observaciones' => $calidadPedigree['faltantes'],
+
                 'nota' => 'Certificado generado en modo consulta. No modifica datos del animal.',
             ],
         ]);
@@ -459,6 +463,80 @@ class AnimalController extends Controller
             'cumplidos' => $cumplidos,
             'total' => $total,
             'faltantes' => $faltantes,
+        ];
+    }
+
+    private function evaluarCertificadoPieCria($clasificacion, $calidadPedigree)
+    {
+        $tiposAptos = [
+            'pie_cria',
+            'reproductor',
+            'reproductora',
+            'semental',
+        ];
+
+        $aptoProductivo = in_array($clasificacion['tipo'] ?? null, $tiposAptos);
+        $porcentaje = $calidadPedigree['porcentaje'] ?? 0;
+        $documentacionCompleta = $porcentaje >= 90;
+        $documentacionAceptable = $porcentaje >= 70;
+        $documentacionCritica = $porcentaje < 40;
+
+        if (!$aptoProductivo) {
+            return [
+                'apto_productivo' => false,
+                'certificado_completo' => false,
+                'certificado_con_observaciones' => false,
+                'puede_emitirse' => false,
+                'resultado' => 'No apto para certificado de pie de cría',
+                'nivel_riesgo' => 'alto',
+                'motivo' => 'La clasificación productiva actual no corresponde a pie de cría, reproductor, reproductora o semental.',
+            ];
+        }
+
+        if ($documentacionCompleta) {
+            return [
+                'apto_productivo' => true,
+                'certificado_completo' => true,
+                'certificado_con_observaciones' => false,
+                'puede_emitirse' => true,
+                'resultado' => 'Certificado completo',
+                'nivel_riesgo' => 'bajo',
+                'motivo' => 'El animal es apto productivamente y cuenta con documentación genealógica suficiente.',
+            ];
+        }
+
+        if ($documentacionAceptable) {
+            return [
+                'apto_productivo' => true,
+                'certificado_completo' => false,
+                'certificado_con_observaciones' => true,
+                'puede_emitirse' => true,
+                'resultado' => 'Certificado con observaciones',
+                'nivel_riesgo' => 'medio',
+                'motivo' => 'El animal es apto productivamente, pero el expediente documental tiene faltantes.',
+            ];
+        }
+
+        if ($documentacionCritica) {
+            return [
+                'apto_productivo' => true,
+                'certificado_completo' => false,
+                'certificado_con_observaciones' => true,
+                'puede_emitirse' => false,
+                'resultado' => 'No recomendable para emisión',
+                'nivel_riesgo' => 'alto',
+                'motivo' => 'El animal puede tener valor productivo, pero la documentación es demasiado incompleta para respaldar un certificado confiable.',
+            ];
+        }
+
+        return [
+            'apto_productivo' => true,
+            'certificado_completo' => false,
+            'certificado_con_observaciones' => true,
+            'puede_emitirse' => true,
+            'resultado' => 'Certificado limitado con observaciones',
+            'nivel_riesgo' => 'medio',
+            'motivo' => 'El animal es apto productivamente, pero debe completarse su expediente para emitir un certificado fuerte.',
         ];
     }
 
