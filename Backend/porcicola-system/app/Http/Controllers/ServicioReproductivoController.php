@@ -148,7 +148,7 @@ class ServicioReproductivoController extends Controller
                     'fecha_probable_parto' => $fechaServicio->copy()->addDays(114)->toDateString(),
                     'tipo_servicio' => $servicio->tipo_servicio,
                     'estado' => 'confirmada',
-                    'resultado' => 'preñada',
+                    'resultado' => null,
                     'intentos' => $servicio->numero_intento,
                     'notas' => $servicio->observaciones,
                 ]);

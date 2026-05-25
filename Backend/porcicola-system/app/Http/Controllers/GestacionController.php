@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Gestacion;
 use App\Models\Animal;
 use App\Models\Camada;
+use App\Models\ServicioReproductivo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -13,7 +14,10 @@ class GestacionController extends Controller
 {
     public function index()
     {
-        return Gestacion::with(['animal', 'serviciosReproductivos'])
+        return Gestacion::with([
+            'animal',
+            'serviciosReproductivos.semental',
+        ])
             ->orderByDesc('id')
             ->get();
     }
@@ -72,7 +76,7 @@ class GestacionController extends Controller
         }
 
         $gestacion->estado = 'confirmada';
-        $gestacion->resultado = 'preñada';
+        $gestacion->resultado = null;
         $gestacion->save();
 
         return response()->json($gestacion->load('animal'));
@@ -89,7 +93,7 @@ class GestacionController extends Controller
         }
 
         $gestacion->estado = 'fallida';
-        $gestacion->resultado = 'no preñada';
+        $gestacion->resultado = null;
         $gestacion->fecha_fin = now();
         $gestacion->save();
 
@@ -131,6 +135,30 @@ class GestacionController extends Controller
         try {
             $madreId = $gestacion->hembra_id;
 
+            $servicioReproductivo = ServicioReproductivo::with('semental')
+                ->where('gestacion_id', $gestacion->id)
+                ->whereNotNull('semental_id')
+                ->orderByDesc('fecha_servicio')
+                ->orderByDesc('id')
+                ->first();
+
+            if (!$servicioReproductivo) {
+                $fechaReferencia = $gestacion->fecha_inicio
+                    ?? $gestacion->fecha_servicio
+                    ?? now()->toDateString();
+
+                $servicioReproductivo = ServicioReproductivo::with('semental')
+                    ->where('hembra_id', $madreId)
+                    ->where('resultado', 'preñada')
+                    ->whereNotNull('semental_id')
+                    ->whereDate('fecha_servicio', '<=', $fechaReferencia)
+                    ->orderByDesc('fecha_servicio')
+                    ->orderByDesc('id')
+                    ->first();
+            }
+
+            $padreId = $servicioReproductivo?->semental_id;
+
             $promedio = collect($request->pesos)->avg();
 
             $camada = Camada::create([
@@ -152,6 +180,7 @@ class GestacionController extends Controller
                     'sexo' => $i < $machos ? 'macho' : 'hembra',
                     'peso' => $request->pesos[$i],
                     'madre_id' => $madreId,
+                    'padre_id' => $padreId,
                     'fecha_nacimiento' => now(),
                     'etapa_actual' => 'lechon',
                     'estado' => 'activo',
@@ -169,7 +198,19 @@ class GestacionController extends Controller
 
             return response()->json([
                 'mensaje' => 'Parto registrado correctamente',
-                'camada' => $camada
+                'camada' => $camada,
+                'madre_id' => $madreId,
+                'padre_id' => $padreId,
+                'servicio_reproductivo_id' => $servicioReproductivo?->id,
+                'padre' => $servicioReproductivo?->semental ? [
+                    'id' => $servicioReproductivo->semental->id,
+                    'identificador_unico' => $servicioReproductivo->semental->identificador_unico,
+                    'sexo' => $servicioReproductivo->semental->sexo,
+                    'raza' => $servicioReproductivo->semental->raza,
+                ] : null,
+                'nota_pedigree' => $padreId
+                    ? 'Los lechones fueron registrados con madre_id y padre_id automáticamente.'
+                    : 'Los lechones fueron registrados con madre_id. No se encontró semental vinculado para asignar padre_id.',
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
