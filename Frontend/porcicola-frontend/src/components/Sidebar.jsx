@@ -33,6 +33,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         </li>
 
         <li>
+          <Link to="/pesos-pendientes">
+            {collapsed ? "⚖️" : "⚖️ Pesos pendientes"}
+          </Link>
+        </li>
+
+        <li>
           <Link to="/ventas">
             {collapsed ? "💰" : "💰 Ventas"}
           </Link>

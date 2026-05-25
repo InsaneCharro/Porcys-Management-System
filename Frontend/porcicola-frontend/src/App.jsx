@@ -23,6 +23,7 @@ import EventosSanitarios from "./pages/EventosSanitarios";
 import Alimentacion from "./pages/Alimentacion";
 import MortalidadBajas from "./pages/MortalidadBajas";
 import Predicciones from "./pages/Predicciones";
+import PesosPendientes from "./pages/PesosPendientes";
 
 function App() {
   const [collapsed, setCollapsed] = useState(false);
@@ -45,6 +46,7 @@ function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/animales" element={<AnimalesPage />} />
+            <Route path="/pesos-pendientes" element={<PesosPendientes />} />
             <Route path="/ventas" element={<VentasPage />} />
             <Route path="/gestaciones" element={<Gestaciones />} />
             <Route path="/animales/:id" element={<AnimalDetalle />} />
