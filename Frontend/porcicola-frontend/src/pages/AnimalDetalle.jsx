@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { registrarPeso } from "../services/pesoService";
-import { getPedigreeAnimal } from "../services/animalService";
+import { registrarPeso, getPesosPendientes } from "../services/pesoService";import { getPedigreeAnimal } from "../services/animalService";
 import axios from "axios";
 
 import {
@@ -38,6 +37,7 @@ export default function AnimalDetalle() {
   const [animal, setAnimal] = useState(null);
   const [pedigree, setPedigree] = useState(null);
   const [pesos, setPesos] = useState([]);
+  const [controlPesos, setControlPesos] = useState(null);
   const [nuevoPeso, setNuevoPeso] = useState("");
   const [fecha, setFecha] = useState("");
 
@@ -78,6 +78,7 @@ export default function AnimalDetalle() {
           corralesRes,
           muertesRes,
           pedigreeRes,
+          pendientesRes,
         ] = await Promise.all([
           axios.get(`${API}/animales/${id}`),
           axios.get(`${API}/pesos/${id}`),
@@ -85,6 +86,7 @@ export default function AnimalDetalle() {
           axios.get(`${API}/corrales`),
           axios.get(`${API}/animales/${id}/muertes`),
           getPedigreeAnimal(id),
+          getPesosPendientes({ todos: 1 }),
         ]);
 
         setAnimal(animalRes.data);
@@ -93,6 +95,11 @@ export default function AnimalDetalle() {
         setCorrales(corralesRes.data || []);
         setHistorialMuertes(muertesRes.data || []);
         setPedigree(pedigreeRes.data || null);
+        const controlAnimal = (pendientesRes.data?.data || []).find(
+          (item) => Number(item.animal_id) === Number(id)
+        );
+
+        setControlPesos(controlAnimal || null);
 
       obtenerMedicamentos().then(setMedicamentos);
     } catch (err) {
@@ -256,8 +263,7 @@ export default function AnimalDetalle() {
       setNuevoPeso("");
       setFecha("");
 
-      const res = await axios.get(`${API}/pesos/${id}`);
-      setPesos(res.data || []);
+      await cargarDatos();
     } catch (err) {
       console.error(err.response?.data || err);
       alert(err.response?.data?.message || "Error registrando peso.");
@@ -498,6 +504,104 @@ export default function AnimalDetalle() {
       </div>
     );
   };
+
+const estiloEstadoPeso = (estado) => {
+  if (estado === "registrado") return styles.badgeSuccess;
+  if (estado === "pendiente_en_ventana") return styles.badgeInfo;
+  if (estado === "pendiente_atrasado") return styles.badgeWarning;
+  if (estado === "aun_no_corresponde") return styles.badgeNeutral;
+
+  return styles.badgeWarning;
+};
+
+const prepararCapturaPesoObligatorio = (dato) => {
+  if (!dato?.fecha_objetivo) {
+    alert("No se puede preparar la captura porque falta fecha objetivo.");
+    return;
+  }
+
+  setFecha(dato.fecha_objetivo);
+  setNuevoPeso("");
+
+  const seccion = document.getElementById("registro-peso-obligatorio");
+
+  if (seccion) {
+    seccion.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+};
+
+const renderControlPesoObligatorio = (clave, titulo) => {
+  const dato = controlPesos?.pesos?.[clave];
+
+  if (!dato) {
+    return (
+      <div style={styles.obligatoryWeightCard}>
+        <h3 style={{ ...styles.sectionTitle, fontSize: "18px", marginBottom: "8px" }}>
+          {titulo}
+        </h3>
+        <p style={styles.text}>No se pudo calcular este control.</p>
+      </div>
+    );
+  }
+
+  const puedeCapturar =
+    !bloqueado &&
+    !dato.registrado &&
+    ["pendiente_en_ventana", "pendiente_atrasado"].includes(dato.estado);
+
+  return (
+    <div style={styles.obligatoryWeightCard}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <h3 style={{ ...styles.sectionTitle, fontSize: "18px", marginBottom: 0 }}>
+          {titulo}
+        </h3>
+
+        <span style={estiloEstadoPeso(dato.estado)}>
+          {dato.mensaje || "No calculado"}
+        </span>
+      </div>
+
+      <p style={styles.text}>
+        <strong style={styles.strong}>Fecha objetivo:</strong>{" "}
+        {dato.fecha_objetivo || "No calculada"}
+      </p>
+
+      <p style={styles.text}>
+        <strong style={styles.strong}>Ventana válida:</strong> día{" "}
+        {dato.ventana_inicio_dia} al día {dato.ventana_fin_dia}
+      </p>
+
+      {dato.registrado && dato.peso ? (
+        <p style={styles.text}>
+          <strong style={styles.strong}>Peso registrado:</strong>{" "}
+          {formatoPeso(dato.peso.peso)} · {dato.peso.fecha} · edad{" "}
+          {dato.peso.edad_dias} días
+        </p>
+      ) : (
+        <p style={styles.text}>
+          <strong style={styles.strong}>Peso registrado:</strong> No registrado
+        </p>
+      )}
+
+      {puedeCapturar && (
+        <button
+          style={styles.button}
+          onClick={() => prepararCapturaPesoObligatorio(dato)}
+        >
+          Capturar {titulo}
+        </button>
+      )}
+    </div>
+  );
+};
 
   const renderPesoRelevante = (titulo, dato) => {
     return (
@@ -944,6 +1048,22 @@ export default function AnimalDetalle() {
       fontWeight: 900,
       fontSize: "13px",
     },
+    badgeNeutral: {
+      display: "inline-block",
+      padding: "8px 12px",
+      borderRadius: "999px",
+      background: "#e2e8f0",
+      color: "#334155",
+      fontWeight: 900,
+      fontSize: "13px",
+    },
+    obligatoryWeightCard: {
+      background: "#f8fafc",
+      border: "1px solid #e2e8f0",
+      borderRadius: "16px",
+      padding: "16px",
+      color: "#0f172a",
+    },
     qualityBox: {
       marginTop: "20px",
       background: "#f8fafc",
@@ -1056,8 +1176,42 @@ export default function AnimalDetalle() {
             <strong style={styles.strong}>Crecimiento:</strong>{" "}
             {estadoCrecimiento}
           </p>
-        </div>
+          </div>
+      </div>
+
+      <div style={styles.card}>
+        <h2 style={styles.sectionTitle}>⚖️ Control de pesos obligatorios</h2>
+
+        {!controlPesos ? (
+          <p style={styles.text}>
+            No se pudo calcular el control de pesos obligatorios para este animal.
+          </p>
+        ) : (
+          <>
+            <div style={styles.grid}>
+              <p style={styles.text}>
+                <strong style={styles.strong}>Edad actual:</strong>{" "}
+                {controlPesos.edad_actual_dias !== null &&
+                controlPesos.edad_actual_dias !== undefined
+                  ? `${controlPesos.edad_actual_dias} días`
+                  : "No calculada"}
+              </p>
+
+              <p style={styles.text}>
+                <strong style={styles.strong}>Estado general:</strong>{" "}
+                {controlPesos.estado_general === "pendiente"
+                  ? "Con pendientes"
+                  : "Al corriente"}
+              </p>
             </div>
+
+            <div style={styles.grid}>
+              {renderControlPesoObligatorio("dia_10", "Peso día 10")}
+              {renderControlPesoObligatorio("dia_28", "Peso día 28")}
+            </div>
+          </>
+        )}
+      </div>
 
       <div style={styles.card}>
         <h2 style={styles.sectionTitle}>🌳 Pedigree y trazabilidad genética</h2>
@@ -1350,7 +1504,7 @@ export default function AnimalDetalle() {
       </div>
 
       {!bloqueado && (
-        <div style={styles.card}>
+        <div id="registro-peso-obligatorio" style={styles.card}>
           <h3 style={styles.sectionTitle}>📊 Registrar peso</h3>
 
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>

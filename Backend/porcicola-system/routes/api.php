@@ -27,6 +27,8 @@ Route::get('/pesos/comparacion', [PesoController::class, 'comparacion']);
 
 Route::get('/pesos/alerta-curva/{animal_id}', [PesoController::class, 'alertaCurva']);
 
+Route::get('/pesos/pendientes', [PesoController::class, 'pendientes']);
+
 Route::get('/ranking', [PesoController::class, 'ranking']);
 
 Route::get('/animales', [AnimalController::class, 'index']);

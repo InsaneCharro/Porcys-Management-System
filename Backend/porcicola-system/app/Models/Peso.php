@@ -8,12 +8,14 @@ class Peso extends Model
 {
     protected $table = 'pesos';
 
-    public $timestamps = false;
+    public $timestamps = true;
 
     protected $fillable = [
         'animal_id',
         'peso',
         'fecha',
-        'etapa'
+        'edad_dias',
+        'etapa',
+        'estado',
     ];
 }

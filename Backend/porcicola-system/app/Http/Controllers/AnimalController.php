@@ -350,6 +350,8 @@ class AnimalController extends Controller
 
     private function pesoMasCercano($animal, $pesos, $diaObjetivo)
     {
+        $toleranciaDias = 2;
+
         $candidatos = $pesos->map(function ($peso) use ($animal, $diaObjetivo) {
             $formateado = $this->formatearPeso($animal, $peso);
 
@@ -360,7 +362,9 @@ class AnimalController extends Controller
             $formateado['distancia_dias'] = abs($formateado['edad_dias'] - $diaObjetivo);
 
             return $formateado;
-        })->filter();
+        })->filter(function ($formateado) use ($toleranciaDias) {
+            return $formateado['distancia_dias'] <= $toleranciaDias;
+        });
 
         if ($candidatos->isEmpty()) {
             return null;
