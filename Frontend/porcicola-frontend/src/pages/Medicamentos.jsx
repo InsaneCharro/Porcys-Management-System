@@ -132,6 +132,73 @@ export default function Medicamentos() {
     }
   };
 
+  const formatearFecha = (fecha) => {
+    if (!fecha) {
+      return 'Sin fecha';
+    }
+
+    const fechaObj = new Date(fecha);
+
+    if (Number.isNaN(fechaObj.getTime())) {
+      return String(fecha);
+    }
+
+    return fechaObj.toLocaleString('es-MX', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const textoNivelStock = (nivel) => {
+    switch (nivel) {
+      case 'sin_stock':
+        return 'Sin stock';
+      case 'critico':
+        return 'Crítico';
+      case 'bajo':
+        return 'Bajo';
+      default:
+        return 'Normal';
+    }
+  };
+
+  const estiloNivelStock = (nivel) => {
+    if (nivel === 'sin_stock' || nivel === 'critico') {
+      return {
+        backgroundColor: '#fee2e2',
+        color: '#991b1b',
+        border: '1px solid #fecaca',
+      };
+    }
+
+    if (nivel === 'bajo') {
+      return {
+        backgroundColor: '#fef3c7',
+        color: '#92400e',
+        border: '1px solid #fde68a',
+      };
+    }
+
+    return {
+      backgroundColor: '#dcfce7',
+      color: '#166534',
+      border: '1px solid #bbf7d0',
+    };
+  };
+
+  const alertasCriticas = alertas.filter(
+    (alerta) => alerta.prioridad === 'critica' || alerta.nivel === 'sin_stock' || alerta.nivel === 'critico'
+  );
+
+  const alertasHierro = alertas.filter((alerta) => alerta.es_hierro);
+
+  const medicamentosSinStock = medicamentos.filter(
+    (medicamento) => Number(medicamento.stock || 0) <= 0
+  );
+
   const styles = {
     container: {
       padding: '20px 30px',
@@ -436,28 +503,80 @@ export default function Medicamentos() {
 
       {tab === 'movimientos' && (
         <div style={styles.card}>
-          <h2>Movimientos</h2>
+          <h2>Movimientos de medicamentos</h2>
 
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Medicamento</th>
-                <th style={styles.th}>Tipo</th>
-                <th style={styles.th}>Cantidad</th>
-                <th style={styles.th}>Motivo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {movimientos.map((m) => (
-                <tr key={m.id}>
-                  <td style={styles.td}>{m.medicamento?.nombre}</td>
-                  <td style={styles.td}>{m.tipo}</td>
-                  <td style={styles.td}>{m.cantidad}</td>
-                  <td style={styles.td}>{m.motivo}</td>
+          <p style={{ color: '#64748b', marginTop: 0 }}>
+            Trazabilidad de entradas, salidas y ajustes registrados en el inventario de medicamentos.
+          </p>
+
+          {movimientos.length === 0 ? (
+            <div
+              style={{
+                padding: '18px',
+                borderRadius: '12px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                color: '#64748b',
+                marginTop: '18px',
+              }}
+            >
+              No hay movimientos registrados.
+            </div>
+          ) : (
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Fecha</th>
+                  <th style={styles.th}>Medicamento</th>
+                  <th style={styles.th}>Tipo</th>
+                  <th style={styles.th}>Cantidad</th>
+                  <th style={styles.th}>Stock actual</th>
+                  <th style={styles.th}>Usuario</th>
+                  <th style={styles.th}>Motivo</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {movimientos.map((m) => (
+                  <tr key={m.id}>
+                    <td style={styles.td}>
+                      {formatearFecha(m.fecha_movimiento || m.created_at)}
+                    </td>
+                    <td style={styles.td}>
+                      {m.medicamento?.nombre || 'Medicamento no encontrado'}
+                    </td>
+                    <td style={styles.td}>
+                      <span
+                        style={{
+                          padding: '5px 9px',
+                          borderRadius: '999px',
+                          fontWeight: '700',
+                          fontSize: '12px',
+                          backgroundColor:
+                            m.tipo === 'entrada'
+                              ? '#dcfce7'
+                              : m.tipo === 'salida'
+                              ? '#fee2e2'
+                              : '#e0f2fe',
+                          color:
+                            m.tipo === 'entrada'
+                              ? '#166534'
+                              : m.tipo === 'salida'
+                              ? '#991b1b'
+                              : '#075985',
+                        }}
+                      >
+                        {String(m.tipo || 'sin tipo').toUpperCase()}
+                      </span>
+                    </td>
+                    <td style={styles.td}>{m.cantidad}</td>
+                    <td style={styles.td}>{m.medicamento?.stock ?? 'Sin dato'}</td>
+                    <td style={styles.td}>{m.usuario || 'Sin usuario'}</td>
+                    <td style={styles.td}>{m.motivo || 'Sin motivo'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
@@ -465,24 +584,140 @@ export default function Medicamentos() {
         <div style={styles.card}>
           <h2>Alertas de stock bajo</h2>
 
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Medicamento</th>
-                <th style={styles.th}>Stock</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alertas.map((a) => (
-                <tr key={a.id}>
-                  <td style={styles.td}>{a.nombre}</td>
-                  <td style={styles.td}>{a.stock}</td>
+          <p style={{ color: '#64748b', marginTop: 0 }}>
+            Control operativo para detectar medicamentos bajos, críticos o sin stock.
+            El hierro se vigila con prioridad porque afecta el control obligatorio de lechones.
+          </p>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '14px',
+              marginTop: '18px',
+              marginBottom: '20px',
+            }}
+          >
+            <div
+              style={{
+                padding: '16px',
+                borderRadius: '14px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              <strong>Total alertas</strong>
+              <div style={{ fontSize: '30px', fontWeight: '800', marginTop: '6px' }}>
+                {alertas.length}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '16px',
+                borderRadius: '14px',
+                backgroundColor: '#fee2e2',
+                border: '1px solid #fecaca',
+              }}
+            >
+              <strong>Críticas</strong>
+              <div style={{ fontSize: '30px', fontWeight: '800', marginTop: '6px', color: '#991b1b' }}>
+                {alertasCriticas.length}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '16px',
+                borderRadius: '14px',
+                backgroundColor: '#fef3c7',
+                border: '1px solid #fde68a',
+              }}
+            >
+              <strong>Alertas de hierro</strong>
+              <div style={{ fontSize: '30px', fontWeight: '800', marginTop: '6px', color: '#92400e' }}>
+                {alertasHierro.length}
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '16px',
+                borderRadius: '14px',
+                backgroundColor: '#e0f2fe',
+                border: '1px solid #bae6fd',
+              }}
+            >
+              <strong>Sin stock</strong>
+              <div style={{ fontSize: '30px', fontWeight: '800', marginTop: '6px', color: '#075985' }}>
+                {medicamentosSinStock.length}
+              </div>
+            </div>
+          </div>
+
+          {alertas.length === 0 ? (
+            <div
+              style={{
+                padding: '18px',
+                borderRadius: '12px',
+                backgroundColor: '#dcfce7',
+                border: '1px solid #bbf7d0',
+                color: '#166534',
+                fontWeight: '700',
+              }}
+            >
+              No hay medicamentos con stock bajo. El inventario sanitario está dentro de umbrales aceptables.
+            </div>
+          ) : (
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Medicamento</th>
+                  <th style={styles.th}>Stock</th>
+                  <th style={styles.th}>Nivel</th>
+                  <th style={styles.th}>Prioridad</th>
+                  <th style={styles.th}>Mensaje</th>
+                  <th style={styles.th}>Acción sugerida</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {alertas.map((a) => (
+                  <tr key={a.id}>
+                    <td style={styles.td}>
+                      <strong>{a.nombre}</strong>
+                      {a.es_hierro ? (
+                        <div style={{ fontSize: '12px', color: '#92400e', marginTop: '4px' }}>
+                          Insumo crítico para hierro obligatorio
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={styles.td}>{a.stock}</td>
+                    <td style={styles.td}>
+                      <span
+                        style={{
+                          ...estiloNivelStock(a.nivel),
+                          padding: '5px 9px',
+                          borderRadius: '999px',
+                          fontSize: '12px',
+                          fontWeight: '800',
+                        }}
+                      >
+                        {textoNivelStock(a.nivel)}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      {a.prioridad ? String(a.prioridad).toUpperCase() : 'SIN PRIORIDAD'}
+                    </td>
+                    <td style={styles.td}>{a.mensaje || 'Sin mensaje'}</td>
+                    <td style={styles.td}>{a.accion_sugerida || 'Revisar inventario'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
+
     </div>
   );
 }

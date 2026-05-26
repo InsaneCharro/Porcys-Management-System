@@ -112,17 +112,44 @@ export default function EventosSanitarios() {
   };
 
   const prepararHierroObligatorio = (control) => {
+    const medicamentosHierroDisponibles = medicamentos.filter((med) => {
+      const nombre = String(med.nombre || '').toLowerCase();
+
+      return nombre.includes('hierro') || nombre.includes('dextr');
+    });
+
     const medicamentoHierro =
-      medicamentos.find((med) =>
-        String(med.nombre || '').toLowerCase().includes('dextr')
-      ) ||
-      medicamentos.find((med) =>
-        String(med.nombre || '').toLowerCase().includes('hierro')
-      );
+      medicamentosHierroDisponibles
+        .filter((med) => Number(med.stock || 0) > 0)
+        .sort((a, b) => {
+          const aEsDextr = String(a.nombre || '').toLowerCase().includes('dextr') ? 1 : 0;
+          const bEsDextr = String(b.nombre || '').toLowerCase().includes('dextr') ? 1 : 0;
+
+          if (aEsDextr !== bEsDextr) {
+            return bEsDextr - aEsDextr;
+          }
+
+          return Number(b.stock || 0) - Number(a.stock || 0);
+        })[0] || medicamentosHierroDisponibles[0];
 
     if (!medicamentoHierro) {
       alert('No se encontró medicamento de hierro registrado. Primero registra Hierro o Hierro dextrán en Medicamentos.');
       return;
+    }
+
+    if (Number(medicamentoHierro.stock || 0) <= 0) {
+      alert('No hay stock disponible de hierro. Registra una entrada antes de preparar el control obligatorio.');
+      return;
+    }
+
+    if (Number(medicamentoHierro.stock || 0) <= 5) {
+      const continuar = window.confirm(
+        `El stock de ${medicamentoHierro.nombre} está crítico (${medicamentoHierro.stock} disponibles). ¿Deseas preparar la aplicación de todos modos?`
+      );
+
+      if (!continuar) {
+        return;
+      }
     }
 
     setTab('aplicar');
@@ -133,7 +160,7 @@ export default function EventosSanitarios() {
       medicamento_id: medicamentoHierro.id,
       dosis: '1',
       fecha: new Date().toISOString().split('T')[0],
-      observaciones: `Hierro obligatorio día 3. Estado previo: ${control.estado}. Edad: ${control.edad_dias} días.`,
+      observaciones: `Hierro obligatorio día 3. Estado previo: ${control.estado}. Edad: ${control.edad_dias} días. Stock previo: ${medicamentoHierro.stock}.`,
     });
   };
 
@@ -191,6 +218,108 @@ export default function EventosSanitarios() {
       border: '1px solid #cbd5e1',
     };
   };
+
+    const medicamentosHierro = medicamentos.filter((med) => {
+    const nombre = String(med.nombre || '').toLowerCase();
+
+    return nombre.includes('hierro') || nombre.includes('dextr');
+  });
+
+  const stockTotalHierro = medicamentosHierro.reduce(
+    (total, med) => total + Number(med.stock || 0),
+    0
+  );
+
+  const presentacionesHierroDisponibles = medicamentosHierro.filter(
+    (med) => Number(med.stock || 0) > 0
+  ).length;
+
+  const controlesHierroPendientes = pendientesLechones.filter(
+    (control) =>
+      control.estado === 'pendiente_en_ventana' ||
+      control.estado === 'pendiente_atrasado'
+  );
+
+  const estadoStockHierro = (() => {
+    if (medicamentosHierro.length === 0) {
+      return 'sin_registro';
+    }
+
+    if (stockTotalHierro <= 0) {
+      return 'sin_stock';
+    }
+
+    if (stockTotalHierro <= 5) {
+      return 'critico';
+    }
+
+    if (stockTotalHierro <= 20) {
+      return 'bajo';
+    }
+
+    return 'suficiente';
+  })();
+
+  const textoEstadoStockHierro = (estado) => {
+    switch (estado) {
+      case 'sin_registro':
+        return 'Sin registro de hierro';
+      case 'sin_stock':
+        return 'Sin stock de hierro';
+      case 'critico':
+        return 'Stock crítico';
+      case 'bajo':
+        return 'Stock bajo';
+      case 'suficiente':
+        return 'Stock suficiente';
+      default:
+        return 'Sin estado';
+    }
+  };
+
+  const estiloEstadoStockHierro = (estado) => {
+    if (estado === 'sin_registro' || estado === 'sin_stock' || estado === 'critico') {
+      return {
+        backgroundColor: '#fee2e2',
+        color: '#991b1b',
+        border: '1px solid #fecaca',
+      };
+    }
+
+    if (estado === 'bajo') {
+      return {
+        backgroundColor: '#fef3c7',
+        color: '#92400e',
+        border: '1px solid #fde68a',
+      };
+    }
+
+    return {
+      backgroundColor: '#dcfce7',
+      color: '#166534',
+      border: '1px solid #bbf7d0',
+    };
+  };
+
+  const mensajeStockHierro = (() => {
+    if (estadoStockHierro === 'sin_registro') {
+      return 'No hay hierro registrado en Medicamentos. No se puede garantizar el control obligatorio día 3.';
+    }
+
+    if (estadoStockHierro === 'sin_stock') {
+      return 'No hay stock disponible de hierro. Registra una entrada antes de aplicar controles obligatorios.';
+    }
+
+    if (estadoStockHierro === 'critico') {
+      return 'El stock de hierro está crítico. Puede no alcanzar para los lechones pendientes.';
+    }
+
+    if (estadoStockHierro === 'bajo') {
+      return 'El stock de hierro está bajo. Conviene programar reabastecimiento.';
+    }
+
+    return 'El stock de hierro es suficiente para continuar con los controles obligatorios.';
+  })();
 
   const styles = {
     container: {
@@ -393,6 +522,58 @@ export default function EventosSanitarios() {
             Ventana sugerida: día 2 a día 4.
           </p>
 
+          <div
+            style={{
+              ...estiloEstadoStockHierro(estadoStockHierro),
+              padding: '16px',
+              borderRadius: '14px',
+              marginBottom: '22px',
+            }}
+          >
+            <strong>Stock de hierro para controles obligatorios</strong>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '12px',
+                marginTop: '12px',
+              }}
+            >
+              <div>
+                <small>Estado</small>
+                <div style={{ fontSize: '20px', fontWeight: '800' }}>
+                  {textoEstadoStockHierro(estadoStockHierro)}
+                </div>
+              </div>
+
+              <div>
+                <small>Stock total de hierro</small>
+                <div style={{ fontSize: '20px', fontWeight: '800' }}>
+                  {stockTotalHierro}
+                </div>
+              </div>
+
+              <div>
+                <small>Presentaciones disponibles</small>
+                <div style={{ fontSize: '20px', fontWeight: '800' }}>
+                  {presentacionesHierroDisponibles}
+                </div>
+              </div>
+
+              <div>
+                <small>Lechones pendientes</small>
+                <div style={{ fontSize: '20px', fontWeight: '800' }}>
+                  {controlesHierroPendientes.length}
+                </div>
+              </div>
+            </div>
+
+            <p style={{ marginBottom: 0, marginTop: '12px', fontWeight: '700' }}>
+              {mensajeStockHierro}
+            </p>
+          </div>
+
           <div style={styles.resumenGrid}>
             <div style={styles.resumenBox}>
               <span>Total revisados</span>
@@ -491,17 +672,47 @@ export default function EventosSanitarios() {
                     </td>
 
                     <td style={styles.td}>
-                      {(control.estado === 'pendiente_en_ventana' ||
-                        control.estado === 'pendiente_atrasado') ? (
-                        <button
-                          style={styles.smallButton}
-                          onClick={() => prepararHierroObligatorio(control)}
-                        >
-                          Preparar hierro
-                        </button>
-                      ) : (
-                        <span>—</span>
-                      )}
+                      {(() => {
+                        const estadoPermitePreparar =
+                          control.estado === 'pendiente_en_ventana' ||
+                          control.estado === 'pendiente_atrasado';
+
+                        const sinHierroDisponible =
+                          estadoStockHierro === 'sin_registro' ||
+                          estadoStockHierro === 'sin_stock';
+
+                        const deshabilitado = !estadoPermitePreparar || sinHierroDisponible;
+
+                        let motivoDeshabilitado = '';
+
+                        if (control.estado === 'registrado') {
+                          motivoDeshabilitado = 'Este lechón ya tiene hierro registrado.';
+                        } else if (control.estado === 'aun_no_corresponde') {
+                          motivoDeshabilitado = 'Aún no corresponde aplicar hierro. Ventana sugerida: día 2 a día 4.';
+                        } else if (sinHierroDisponible) {
+                          motivoDeshabilitado = 'Primero registra o reabastece hierro en Medicamentos.';
+                        } else {
+                          motivoDeshabilitado = 'Preparar aplicación de hierro.';
+                        }
+
+                        return (
+                          <button
+                            style={{
+                              ...styles.smallButton,
+                              backgroundColor: deshabilitado ? '#e5e7eb' : styles.smallButton.backgroundColor,
+                              color: deshabilitado ? '#6b7280' : styles.smallButton.color,
+                              border: deshabilitado ? '1px solid #d1d5db' : styles.smallButton.border,
+                              opacity: deshabilitado ? 1 : 1,
+                              cursor: deshabilitado ? 'not-allowed' : 'pointer',
+                            }}
+                            disabled={deshabilitado}
+                            onClick={() => prepararHierroObligatorio(control)}
+                            title={motivoDeshabilitado}
+                          >
+                            Preparar hierro
+                          </button>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}

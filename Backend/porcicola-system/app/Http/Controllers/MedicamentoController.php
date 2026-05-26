@@ -6,6 +6,7 @@ use App\Models\Medicamento;
 use App\Models\AplicacionMedica;
 use App\Models\MovimientoMedicamento;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MedicamentoController extends Controller
 {
@@ -25,17 +26,36 @@ class MedicamentoController extends Controller
             'precio_unitario' => 'required|numeric|min:0',
         ]);
 
-        $medicamento = Medicamento::create($request->all());
+        try {
+            $medicamento = DB::transaction(function () use ($request) {
+                $medicamento = Medicamento::create([
+                    'nombre' => $request->nombre,
+                    'descripcion' => $request->descripcion,
+                    'stock' => $request->stock,
+                    'precio_unitario' => $request->precio_unitario,
+                ]);
 
-        MovimientoMedicamento::create([
-            'medicamento_id' => $medicamento->id,
-            'tipo' => 'entrada',
-            'cantidad' => $medicamento->stock,
-            'motivo' => 'Registro inicial',
-            'usuario' => 'Sistema',
-        ]);
+                if ((int) $request->stock > 0) {
+                    MovimientoMedicamento::create([
+                        'medicamento_id' => $medicamento->id,
+                        'tipo' => 'entrada',
+                        'cantidad' => (int) $request->stock,
+                        'motivo' => 'Registro inicial',
+                        'usuario' => 'Sistema',
+                    ]);
+                }
 
-        return response()->json($medicamento, 201);
+                return $medicamento;
+            });
+
+            return response()->json($medicamento, 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Error al registrar medicamento',
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ], 500);
+        }
     }
 
     public function entrada(Request $request, $id)
@@ -45,22 +65,36 @@ class MedicamentoController extends Controller
             'motivo' => 'nullable|string|max:255',
         ]);
 
-        $medicamento = Medicamento::findOrFail($id);
+        try {
+            $medicamento = DB::transaction(function () use ($request, $id) {
+                $medicamento = Medicamento::where('id', $id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-        $medicamento->increment('stock', $request->cantidad);
+                $medicamento->increment('stock', (int) $request->cantidad);
 
-        MovimientoMedicamento::create([
-            'medicamento_id' => $medicamento->id,
-            'tipo' => 'entrada',
-            'cantidad' => $request->cantidad,
-            'motivo' => $request->motivo ?? 'Entrada manual',
-            'usuario' => 'Usuario',
-        ]);
+                MovimientoMedicamento::create([
+                    'medicamento_id' => $medicamento->id,
+                    'tipo' => 'entrada',
+                    'cantidad' => (int) $request->cantidad,
+                    'motivo' => $request->motivo ?: 'Entrada manual',
+                    'usuario' => 'Usuario',
+                ]);
 
-        return response()->json([
-            'message' => 'Entrada registrada correctamente',
-            'medicamento' => $medicamento->fresh(),
-        ]);
+                return $medicamento->fresh();
+            });
+
+            return response()->json([
+                'message' => 'Entrada registrada correctamente',
+                'medicamento' => $medicamento,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Error al registrar entrada de medicamento',
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ], 500);
+        }
     }
 
     public function aplicar(Request $request)
@@ -72,34 +106,48 @@ class MedicamentoController extends Controller
             'fecha' => 'required|date',
         ]);
 
-        $medicamento = Medicamento::findOrFail($request->medicamento_id);
+        try {
+            DB::transaction(function () use ($request) {
+                $medicamento = Medicamento::where('id', $request->medicamento_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-        if ($medicamento->stock <= 0) {
+                if ((int) ($medicamento->stock ?? 0) <= 0) {
+                    throw new \RuntimeException('No hay stock disponible para este medicamento.');
+                }
+
+                AplicacionMedica::create([
+                    'animal_id' => $request->animal_id,
+                    'medicamento' => $medicamento->nombre,
+                    'dosis' => $request->dosis,
+                    'fecha' => $request->fecha,
+                ]);
+
+                $medicamento->decrement('stock', 1);
+
+                MovimientoMedicamento::create([
+                    'medicamento_id' => $medicamento->id,
+                    'tipo' => 'salida',
+                    'cantidad' => 1,
+                    'motivo' => 'Aplicación a animal #' . $request->animal_id,
+                    'usuario' => 'Usuario',
+                ]);
+            });
+
             return response()->json([
-                'message' => 'No hay stock disponible'
+                'message' => 'Medicamento aplicado correctamente'
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage()
             ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Error al aplicar medicamento',
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ], 500);
         }
-
-        AplicacionMedica::create([
-            'animal_id' => $request->animal_id,
-            'medicamento' => $medicamento->nombre,
-            'dosis' => $request->dosis,
-            'fecha' => $request->fecha,
-        ]);
-
-        $medicamento->decrement('stock', 1);
-
-        MovimientoMedicamento::create([
-            'medicamento_id' => $medicamento->id,
-            'tipo' => 'salida',
-            'cantidad' => 1,
-            'motivo' => 'Aplicación a animal #' . $request->animal_id,
-            'usuario' => 'Usuario',
-        ]);
-
-        return response()->json([
-            'message' => 'Medicamento aplicado correctamente'
-        ]);
     }
 
     public function historial($animalId)
@@ -113,19 +161,114 @@ class MedicamentoController extends Controller
 
     public function alertas()
     {
-        return response()->json(
-            Medicamento::where('stock', '<=', 5)
-                ->orderBy('stock')
-                ->get()
-        );
+        $umbralGeneralBajo = 10;
+        $umbralHierroBajo = 20;
+        $umbralCritico = 5;
+
+        $alertas = Medicamento::orderBy('stock')
+            ->orderBy('nombre')
+            ->get()
+            ->filter(function ($medicamento) use ($umbralGeneralBajo, $umbralHierroBajo) {
+                $stock = (int) ($medicamento->stock ?? 0);
+                $nombre = strtolower((string) ($medicamento->nombre ?? ''));
+
+                $esHierro = strpos($nombre, 'hierro') !== false ||
+                    strpos($nombre, 'dextr') !== false;
+
+                $umbralBajo = $esHierro ? $umbralHierroBajo : $umbralGeneralBajo;
+
+                return $stock <= $umbralBajo;
+            })
+            ->map(function ($medicamento) use ($umbralGeneralBajo, $umbralHierroBajo, $umbralCritico) {
+                $stock = (int) ($medicamento->stock ?? 0);
+                $nombre = strtolower((string) ($medicamento->nombre ?? ''));
+
+                $esHierro = strpos($nombre, 'hierro') !== false ||
+                    strpos($nombre, 'dextr') !== false;
+
+                $umbralBajo = $esHierro ? $umbralHierroBajo : $umbralGeneralBajo;
+
+                if ($stock <= 0) {
+                    $nivel = 'sin_stock';
+                    $prioridad = 'critica';
+                } elseif ($stock <= $umbralCritico) {
+                    $nivel = 'critico';
+                    $prioridad = 'critica';
+                } else {
+                    $nivel = 'bajo';
+                    $prioridad = 'importante';
+                }
+
+                if ($esHierro && $stock <= 0) {
+                    $mensaje = 'Hierro sin stock disponible. Riesgo directo para lechones pendientes de hierro obligatorio.';
+                    $accion = 'Registrar entrada de hierro antes de aplicar controles sanitarios obligatorios.';
+                } elseif ($esHierro && $stock <= $umbralCritico) {
+                    $mensaje = 'Stock crítico de hierro. Puede no ser suficiente para cubrir lechones próximos.';
+                    $accion = 'Reabastecer hierro de forma prioritaria.';
+                } elseif ($esHierro) {
+                    $mensaje = 'Stock bajo de hierro. Vigilar suministro para controles obligatorios de lechones.';
+                    $accion = 'Programar compra o entrada de hierro.';
+                } elseif ($stock <= 0) {
+                    $mensaje = 'Medicamento sin stock disponible.';
+                    $accion = 'Registrar entrada antes de usar este medicamento.';
+                } elseif ($stock <= $umbralCritico) {
+                    $mensaje = 'Stock crítico de medicamento.';
+                    $accion = 'Reabastecer cuanto antes.';
+                } else {
+                    $mensaje = 'Stock bajo de medicamento.';
+                    $accion = 'Revisar inventario y programar compra.';
+                }
+
+                return [
+                    'id' => $medicamento->id,
+                    'nombre' => $medicamento->nombre,
+                    'descripcion' => $medicamento->descripcion,
+                    'stock' => $stock,
+                    'precio_unitario' => $medicamento->precio_unitario,
+                    'es_hierro' => $esHierro,
+                    'nivel' => $nivel,
+                    'prioridad' => $prioridad,
+                    'umbral_bajo' => $umbralBajo,
+                    'umbral_critico' => $umbralCritico,
+                    'mensaje' => $mensaje,
+                    'accion_sugerida' => $accion,
+                    'created_at' => $medicamento->created_at,
+                    'updated_at' => $medicamento->updated_at,
+                ];
+            })
+            ->values();
+
+        return response()->json($alertas);
     }
 
     public function movimientos()
     {
-        return response()->json(
-            MovimientoMedicamento::with('medicamento')
-                ->orderByDesc('created_at')
-                ->get()
-        );
+        $movimientos = MovimientoMedicamento::with('medicamento')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get()
+            ->map(function ($movimiento) {
+                return [
+                    'id' => $movimiento->id,
+                    'medicamento_id' => $movimiento->medicamento_id,
+                    'tipo' => $movimiento->tipo,
+                    'cantidad' => $movimiento->cantidad,
+                    'motivo' => $movimiento->motivo,
+                    'usuario' => $movimiento->usuario,
+                    'created_at' => $movimiento->created_at,
+                    'updated_at' => $movimiento->updated_at,
+                    'fecha_movimiento' => optional($movimiento->created_at)->format('Y-m-d H:i:s'),
+                    'medicamento' => $movimiento->medicamento ? [
+                        'id' => $movimiento->medicamento->id,
+                        'nombre' => $movimiento->medicamento->nombre,
+                        'descripcion' => $movimiento->medicamento->descripcion,
+                        'stock' => $movimiento->medicamento->stock,
+                        'precio_unitario' => $movimiento->medicamento->precio_unitario,
+                    ] : null,
+                ];
+            });
+
+        return response()->json($movimientos);
     }
 }

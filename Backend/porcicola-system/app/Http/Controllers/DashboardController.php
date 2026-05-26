@@ -716,34 +716,136 @@ class DashboardController extends Controller
 
         $medicamentosBajos = 0;
         $medicamentosCriticos = collect();
+        $medicamentosSinStock = 0;
+        $hierroDisponible = 0;
+        $hierroStockTotal = 0;
+        $hierroEstado = 'sin_registro';
 
         if (Schema::hasTable('medicamentos') && $this->hasColumn('medicamentos', 'stock')) {
-            $medicamentosBajos = DB::table('medicamentos')->where('stock', '<', 10)->count();
-            $medicamentosCriticos = DB::table('medicamentos')
-                ->where('stock', '<', 10)
+            $todosMedicamentos = DB::table('medicamentos')
                 ->orderBy('stock')
-                ->limit(10)
+                ->orderBy('nombre')
                 ->get();
+
+            $medicamentosCriticos = $todosMedicamentos
+                ->filter(function ($medicamento) {
+                    $stock = (int) ($medicamento->stock ?? 0);
+                    $nombre = strtolower((string) ($medicamento->nombre ?? ''));
+
+                    $esHierro = str_contains($nombre, 'hierro') || str_contains($nombre, 'dextr');
+                    $umbralBajo = $esHierro ? 20 : 10;
+
+                    return $stock <= $umbralBajo;
+                })
+                ->map(function ($medicamento) {
+                    $stock = (int) ($medicamento->stock ?? 0);
+                    $nombre = strtolower((string) ($medicamento->nombre ?? ''));
+
+                    $esHierro = str_contains($nombre, 'hierro') || str_contains($nombre, 'dextr');
+                    $umbralBajo = $esHierro ? 20 : 10;
+                    $umbralCritico = 5;
+
+                    if ($stock <= 0) {
+                        $nivel = 'sin_stock';
+                        $prioridad = 'critica';
+                    } elseif ($stock <= $umbralCritico) {
+                        $nivel = 'critico';
+                        $prioridad = 'critica';
+                    } else {
+                        $nivel = 'bajo';
+                        $prioridad = 'importante';
+                    }
+
+                    return [
+                        'id' => $medicamento->id,
+                        'nombre' => $medicamento->nombre,
+                        'descripcion' => $medicamento->descripcion ?? null,
+                        'stock' => $stock,
+                        'precio_unitario' => $medicamento->precio_unitario ?? 0,
+                        'es_hierro' => $esHierro,
+                        'nivel' => $nivel,
+                        'prioridad' => $prioridad,
+                        'umbral_bajo' => $umbralBajo,
+                        'umbral_critico' => $umbralCritico,
+                        'mensaje' => $esHierro
+                            ? 'Revisar suministro de hierro para controles obligatorios de lechones.'
+                            : 'Revisar stock de medicamento.',
+                        'accion_sugerida' => $esHierro
+                            ? 'Programar entrada de hierro antes de aplicar controles sanitarios obligatorios.'
+                            : 'Programar compra o registrar entrada.',
+                    ];
+                })
+                ->values();
+
+            $medicamentosBajos = $medicamentosCriticos->count();
+
+            $medicamentosSinStock = $todosMedicamentos
+                ->filter(function ($medicamento) {
+                    return (int) ($medicamento->stock ?? 0) <= 0;
+                })
+                ->count();
+
+            $medicamentosHierro = $todosMedicamentos
+                ->filter(function ($medicamento) {
+                    $nombre = strtolower((string) ($medicamento->nombre ?? ''));
+
+                    return str_contains($nombre, 'hierro') || str_contains($nombre, 'dextr');
+                });
+
+            $hierroStockTotal = $medicamentosHierro
+                ->sum(function ($medicamento) {
+                    return (int) ($medicamento->stock ?? 0);
+                });
+
+            $hierroDisponible = $medicamentosHierro
+                ->filter(function ($medicamento) {
+                    return (int) ($medicamento->stock ?? 0) > 0;
+                })
+                ->count();
+
+            if ($medicamentosHierro->count() === 0) {
+                $hierroEstado = 'sin_registro';
+            } elseif ($hierroStockTotal <= 0) {
+                $hierroEstado = 'sin_stock';
+            } elseif ($hierroStockTotal <= 5) {
+                $hierroEstado = 'critico';
+            } elseif ($hierroStockTotal <= 20) {
+                $hierroEstado = 'bajo';
+            } else {
+                $hierroEstado = 'suficiente';
+            }
         }
 
         $alertas = [];
 
         foreach ($medicamentosCriticos as $medicamento) {
             $alertas[] = [
-                'tipo' => 'medicamento_bajo',
-                'nivel' => ((float) ($medicamento->stock ?? 0) <= 0) ? 'critica' : 'importante',
-                'mensaje' => 'Stock bajo de medicamento: ' . ($medicamento->nombre ?? ('Medicamento #' . $medicamento->id)) . '.',
+                'tipo' => $medicamento['es_hierro'] ? 'hierro_stock_bajo' : 'medicamento_bajo',
+                'nivel' => $medicamento['prioridad'],
+                'mensaje' => $medicamento['nombre'] . ' tiene stock ' . $medicamento['nivel'] . ' (' . $medicamento['stock'] . ' disponibles).',
+                'accion_sugerida' => $medicamento['accion_sugerida'],
+            ];
+        }
+
+        if ($hierroEstado === 'sin_registro') {
+            $alertas[] = [
+                'tipo' => 'hierro_no_registrado',
+                'nivel' => 'critica',
+                'mensaje' => 'No hay medicamento de hierro registrado. No se puede garantizar el control obligatorio día 3.',
+                'accion_sugerida' => 'Registrar Hierro o Hierro dextrán en Medicamentos.',
             ];
         }
 
         if (Schema::hasTable('animales') && $this->hasColumn('animales', 'fecha_nacimiento') && $this->hasColumn('animales', 'etapa_actual')) {
             $lechones = DB::table('animales')
-                ->where('etapa_actual', 'lechon')
+                ->whereIn('etapa_actual', ['lechon', 'lechón'])
                 ->whereNotNull('fecha_nacimiento')
                 ->when($this->hasColumn('animales', 'estado'), function ($query) {
                     $query->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%muert%'])
                         ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%descart%'])
-                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%']);
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%baja%'])
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%vendid%'])
+                        ->whereRaw("LOWER(COALESCE(estado, '')) NOT LIKE ?", ['%sacrific%']);
                 })
                 ->limit(300)
                 ->get();
@@ -753,10 +855,15 @@ class DashboardController extends Controller
                 $edad = abs((int) $edad);
 
                 if ($edad >= 3 && $edad <= 5) {
+                    $nivel = in_array($hierroEstado, ['sin_registro', 'sin_stock', 'critico'], true)
+                        ? 'critica'
+                        : 'importante';
+
                     $alertas[] = [
                         'tipo' => 'hierro_pendiente',
-                        'nivel' => 'importante',
-                        'mensaje' => 'Hierro dextrán pendiente para ' . ($lechon->identificador_unico ?? ('Animal #' . $lechon->id)) . '.',
+                        'nivel' => $nivel,
+                        'mensaje' => 'Hierro obligatorio pendiente para ' . ($lechon->identificador_unico ?? ('Animal #' . $lechon->id)) . '. Estado de stock: ' . $hierroEstado . '.',
+                        'accion_sugerida' => 'Aplicar hierro si hay stock suficiente; si no, registrar entrada primero.',
                     ];
                 }
 
@@ -765,6 +872,7 @@ class DashboardController extends Controller
                         'tipo' => 'vacunacion_recomendada',
                         'nivel' => 'informativa',
                         'mensaje' => 'Vacunación recomendada para ' . ($lechon->identificador_unico ?? ('Animal #' . $lechon->id)) . '.',
+                        'accion_sugerida' => 'Revisar protocolo sanitario.',
                     ];
                 }
             }
@@ -774,7 +882,13 @@ class DashboardController extends Controller
             'eventos_sanitarios_recientes' => $eventosRecientesCount,
             'eventos_recientes' => $eventosRecientes,
             'medicamentos_bajos' => $medicamentosBajos,
+            'medicamentos_sin_stock' => $medicamentosSinStock,
             'medicamentos_criticos' => $medicamentosCriticos,
+            'hierro' => [
+                'estado' => $hierroEstado,
+                'stock_total' => $hierroStockTotal,
+                'presentaciones_disponibles' => $hierroDisponible,
+            ],
             'alertas_sanitarias_count' => count($alertas),
             'alertas' => $alertas,
         ];
