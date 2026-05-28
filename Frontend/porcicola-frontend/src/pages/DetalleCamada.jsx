@@ -50,7 +50,9 @@ export default function DetalleCamada() {
   };
 
   const sexoVisual = (sexo) => {
-    return sexo === "macho"
+    const normalizado = String(sexo || "").toLowerCase();
+
+    return normalizado === "macho" || normalizado === "m"
       ? {
           border: "#2563eb",
           bg: "#dbeafe",
@@ -207,6 +209,10 @@ export default function DetalleCamada() {
   }
 
   const lechones = camada.lechones || [];
+  const totalCrias = Number(camada.total_crias ?? 0);
+  const vivos = Number(camada.vivos ?? 0);
+  const muertos = Number(camada.muertos ?? 0);
+  const tieneResumenGeneral = totalCrias > 0 || vivos > 0 || muertos > 0;
 
   return (
     <div style={styles.page}>
@@ -252,11 +258,42 @@ export default function DetalleCamada() {
         </div>
       </div>
 
-      <h2 style={styles.sectionTitle}>🐖 Lechones</h2>
+      <h2 style={styles.sectionTitle}>🐖 Lechones individuales</h2>
 
       {lechones.length === 0 ? (
         <div style={styles.empty}>
-          Esta camada no tiene lechones registrados.
+          {tieneResumenGeneral ? (
+            <>
+              <div
+                style={{
+                  color: "#0f172a",
+                  fontSize: "17px",
+                  fontWeight: 900,
+                  marginBottom: "8px",
+                }}
+              >
+                Esta camada fue registrada como resumen general.
+              </div>
+
+              <div>
+                El sistema tiene capturado el total de crías, vivos, muertos y peso
+                promedio, pero no existen lechones individuales vinculados a esta
+                camada.
+              </div>
+
+              <div
+                style={{
+                  marginTop: "10px",
+                  color: "#475569",
+                  fontSize: "14px",
+                }}
+              >
+                Resumen: {totalCrias} crías · {vivos} vivos · {muertos} muertos.
+              </div>
+            </>
+          ) : (
+            "Esta camada no tiene crías registradas."
+          )}
         </div>
       ) : (
         <div style={styles.grid}>
@@ -265,55 +302,56 @@ export default function DetalleCamada() {
             const visualEstado = estadoVisual(lechon.estado);
 
             return (
-              <Link
-                key={lechon.id}
-                to={`/animales/${lechon.id}`}
-                style={{
-                  textDecoration: "none",
-                  color: "inherit",
-                }}
-              >
-                <div style={styles.lechonCard(visualSexo)}>
-                  <h3 style={styles.lechonTitle}>
-                    {lechon.identificador_unico || `Lechón #${lechon.id}`}
-                  </h3>
+              <div key={lechon.id} style={styles.lechonCard(visualSexo)}>
+                <h3 style={styles.lechonTitle}>
+                  {lechon.identificador_unico || `Lechón #${lechon.id}`}
+                </h3>
 
-                  <p style={styles.text}>
-                    <strong style={styles.strong}>Sexo:</strong>{" "}
-                    <span style={styles.badge(visualSexo)}>
-                      {lechon.sexo || "N/A"}
-                    </span>
-                  </p>
+                <p style={styles.text}>
+                  <strong style={styles.strong}>Sexo:</strong>{" "}
+                  <span style={styles.badge(visualSexo)}>
+                    {lechon.sexo || "N/A"}
+                  </span>
+                </p>
 
-                  <p style={styles.text}>
-                    <strong style={styles.strong}>Peso:</strong>{" "}
-                    {lechon.peso ?? 0} kg
-                  </p>
+                <p style={styles.text}>
+                  <strong style={styles.strong}>Peso nacimiento:</strong>{" "}
+                  {lechon.peso_nacimiento ?? lechon.peso ?? "N/A"} kg
+                </p>
 
-                  <p style={styles.text}>
-                    <strong style={styles.strong}>Estado:</strong>{" "}
-                    <span style={styles.badge(visualEstado)}>
-                      {lechon.estado || "N/A"}
-                    </span>
-                  </p>
+                <p style={styles.text}>
+                  <strong style={styles.strong}>Peso día 10:</strong>{" "}
+                  {lechon.peso_dia_10 ?? "Pendiente"}
+                </p>
 
-                  <p style={styles.text}>
-                    <strong style={styles.strong}>Etapa:</strong>{" "}
-                    {lechon.etapa_actual || "N/A"}
-                  </p>
+                <p style={styles.text}>
+                  <strong style={styles.strong}>Peso día 28:</strong>{" "}
+                  {lechon.peso_dia_28 ?? "Pendiente"}
+                </p>
 
-                  <div
-                    style={{
-                      marginTop: "14px",
-                      fontSize: "13px",
-                      color: "#2563eb",
-                      fontWeight: 900,
-                    }}
-                  >
-                    Click para ver detalle →
-                  </div>
+                <p style={styles.text}>
+                  <strong style={styles.strong}>Clasificación:</strong>{" "}
+                  {lechon.clasificacion || "Pendiente"}
+                </p>
+
+                <p style={styles.text}>
+                  <strong style={styles.strong}>Estado:</strong>{" "}
+                  <span style={styles.badge(visualEstado)}>
+                    {lechon.estado || "N/A"}
+                  </span>
+                </p>
+
+                <div
+                  style={{
+                    marginTop: "14px",
+                    fontSize: "13px",
+                    color: "#2563eb",
+                    fontWeight: 900,
+                  }}
+                >
+                  Registro individual de lechón
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>

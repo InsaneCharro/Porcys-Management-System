@@ -137,36 +137,58 @@ export default function Sidebar({ collapsed, setCollapsed, usuario, onLogout }) 
       </button>
 
       <div className="sidebar-header">
-        <img src="/logo.png" alt="Logo" className="sidebar-logo" />
-
-        {!collapsed && (
-          <h2 className="sidebar-title">PORCYS</h2>
-        )}
+        <img
+          src="/logo.png"
+          alt="Logo"
+          className="sidebar-logo"
+          style={{
+            width: collapsed ? "50px" : "100px",
+            height: collapsed ? "50px" : "100px",
+            objectFit: "contain",
+            display: "block",
+            margin: "0 auto",
+          }}
+        />
       </div>
 
       {!collapsed && usuario && (
         <div
           style={{
-            margin: "10px 14px 16px",
-            padding: "12px",
-            borderRadius: "12px",
-            background: "rgba(255,255,255,0.10)",
-            color: "#ffffff",
+            margin: "12px 14px 18px",
+            padding: "14px",
+            borderRadius: "14px",
+            background: "#ffffff",
+            color: "#0f172a",
+            border: "1px solid #cbd5e1",
+            boxShadow: "0 6px 14px rgba(15, 23, 42, 0.08)",
           }}
         >
-          <div style={{ fontWeight: 900, fontSize: "14px" }}>
-            {usuario.name}
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#64748b",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              marginBottom: "6px",
+            }}
+          >
+            Sesión activa
           </div>
 
           <div
             style={{
-              fontSize: "12px",
-              opacity: 0.85,
-              marginTop: "4px",
+              display: "inline-block",
+              padding: "6px 10px",
+              borderRadius: "999px",
+              background: "#e0f2fe",
+              color: "#075985",
+              fontSize: "14px",
+              fontWeight: 900,
               textTransform: "capitalize",
             }}
           >
-            Rol: {usuario.role}
+            {usuario.role}
           </div>
         </div>
       )}
