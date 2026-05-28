@@ -21,33 +21,9 @@ class CorralController extends Controller
             ->orderBy('id')
             ->get()
             ->map(function ($corral) {
-                $animales = $corral->animales->filter(function ($animal) {
-                    return !$this->animalBloqueadoPorEstado($animal);
-                })->values();
-
-                $ocupados = $animales->count();
-                $capacidad = (int) $corral->capacidad;
-                $disponibles = max($capacidad - $ocupados, 0);
-
-                return [
-                    'id' => $corral->id,
-                    'nombre' => $corral->nombre,
-                    'capacidad' => $capacidad,
-                    'tipo_corral' => $corral->tipo_corral ?? 'general',
-                    'ocupados' => $ocupados,
-                    'disponibles' => $disponibles,
-                    'porcentaje_ocupacion' => $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 2) : 0,
-                    'estado_ocupacion' => $this->estadoOcupacion($ocupados, $capacidad),
-
-                    // Compatibilidad temporal con frontend viejo.
-                    'lechones_count' => $ocupados,
-                    'animales_count' => $ocupados,
-
-                    'animales' => $animales->map(function ($animal) {
-                        return $this->formatearAnimal($animal);
-                    })->values(),
-                ];
-            });
+                return $this->formatearCorral($corral, true, false);
+            })
+            ->values();
 
         return response()->json($corrales);
     }
@@ -61,34 +37,9 @@ class CorralController extends Controller
             ])
             ->findOrFail($id);
 
-        $animalesActivos = $corral->animales->filter(function ($animal) {
-            return !$this->animalBloqueadoPorEstado($animal);
-        })->values();
-
-        $ocupados = $animalesActivos->count();
-        $capacidad = (int) $corral->capacidad;
-
-        return response()->json([
-            'id' => $corral->id,
-            'nombre' => $corral->nombre,
-            'capacidad' => $capacidad,
-            'tipo_corral' => $corral->tipo_corral ?? 'general',
-            'ocupados' => $ocupados,
-            'disponibles' => max($capacidad - $ocupados, 0),
-            'porcentaje_ocupacion' => $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 2) : 0,
-            'estado_ocupacion' => $this->estadoOcupacion($ocupados, $capacidad),
-            'animales' => $animalesActivos->map(function ($animal) {
-                return $this->formatearAnimal($animal);
-            })->values(),
-            'animales_bloqueados_en_corral' => $corral->animales
-                ->filter(function ($animal) {
-                    return $this->animalBloqueadoPorEstado($animal);
-                })
-                ->map(function ($animal) {
-                    return $this->formatearAnimal($animal);
-                })
-                ->values(),
-        ]);
+        return response()->json(
+            $this->formatearCorral($corral, true, true)
+        );
     }
 
     public function store(Request $request)
@@ -222,42 +173,80 @@ class CorralController extends Controller
 
     public function resumen()
     {
-        $corrales = Corral::with('animales')->get();
+        $corrales = Corral::with('animales')
+            ->orderBy('id')
+            ->get()
+            ->map(function ($corral) {
+                return $this->formatearCorral($corral, false, false);
+            })
+            ->values();
 
         $totalCorrales = $corrales->count();
         $capacidadTotal = $corrales->sum('capacidad');
+        $ocupados = $corrales->sum('ocupados');
+        $disponibles = max($capacidadTotal - $ocupados, 0);
 
-        $ocupados = $corrales->sum(function ($corral) {
-            return $corral->animales->filter(function ($animal) {
-                return !$this->animalBloqueadoPorEstado($animal);
-            })->count();
-        });
+        $alertas = $corrales
+            ->pluck('alerta_ocupacion')
+            ->filter()
+            ->values();
 
-        return response()->json([
-            'total_corrales' => $totalCorrales,
-            'capacidad_total' => $capacidadTotal,
-            'ocupados' => $ocupados,
-            'disponibles' => max($capacidadTotal - $ocupados, 0),
-            'porcentaje_ocupacion' => $capacidadTotal > 0 ? round(($ocupados / $capacidadTotal) * 100, 2) : 0,
-            'por_tipo' => $corrales->groupBy(function ($corral) {
-                return $corral->tipo_corral ?? 'general';
-            })->map(function ($grupo) {
+        $porTipo = $corrales
+            ->groupBy('tipo_corral')
+            ->map(function ($grupo, $tipo) {
                 $capacidad = $grupo->sum('capacidad');
-
-                $ocupadosGrupo = $grupo->sum(function ($corral) {
-                    return $corral->animales->filter(function ($animal) {
-                        return !$this->animalBloqueadoPorEstado($animal);
-                    })->count();
-                });
+                $ocupadosGrupo = $grupo->sum('ocupados');
 
                 return [
+                    'tipo_corral' => $tipo,
                     'corrales' => $grupo->count(),
                     'capacidad' => $capacidad,
                     'ocupados' => $ocupadosGrupo,
                     'disponibles' => max($capacidad - $ocupadosGrupo, 0),
                     'porcentaje_ocupacion' => $capacidad > 0 ? round(($ocupadosGrupo / $capacidad) * 100, 2) : 0,
+                    'corrales_en_riesgo' => $grupo->where('estado_ocupacion', 'en_riesgo')->count(),
+                    'corrales_saturados' => $grupo->filter(function ($corral) {
+                        return in_array($corral['estado_ocupacion'], ['saturado', 'sobrecupo'], true);
+                    })->count(),
+                    'corrales_sobrecupo' => $grupo->where('estado_ocupacion', 'sobrecupo')->count(),
                 ];
-            })->values(),
+            })
+            ->values();
+
+        return response()->json([
+            'total_corrales' => $totalCorrales,
+            'total' => $totalCorrales,
+            'capacidad_total' => $capacidadTotal,
+            'ocupados' => $ocupados,
+            'disponibles' => $disponibles,
+            'espacios_disponibles' => $disponibles,
+            'porcentaje_ocupacion' => $capacidadTotal > 0 ? round(($ocupados / $capacidadTotal) * 100, 2) : 0,
+            'corrales_en_riesgo' => $corrales->where('estado_ocupacion', 'en_riesgo')->count(),
+            'corrales_saturados' => $corrales->filter(function ($corral) {
+                return in_array($corral['estado_ocupacion'], ['saturado', 'sobrecupo'], true);
+            })->count(),
+            'corrales_sobrecupo' => $corrales->where('estado_ocupacion', 'sobrecupo')->count(),
+            'corrales' => $corrales,
+            'por_tipo' => $porTipo,
+            'alertas' => $alertas,
+        ]);
+    }
+
+    public function alertasOcupacion()
+    {
+        $resumen = $this->resumen()->getData(true);
+
+        return response()->json([
+            'total_alertas' => count($resumen['alertas'] ?? []),
+            'corrales_en_riesgo' => $resumen['corrales_en_riesgo'] ?? 0,
+            'corrales_saturados' => $resumen['corrales_saturados'] ?? 0,
+            'corrales_sobrecupo' => $resumen['corrales_sobrecupo'] ?? 0,
+            'alertas' => $resumen['alertas'] ?? [],
+            'corrales' => collect($resumen['corrales'] ?? [])
+                ->filter(function ($corral) {
+                    return in_array($corral['estado_ocupacion'] ?? '', ['en_riesgo', 'saturado', 'sobrecupo'], true);
+                })
+                ->values(),
         ]);
     }
 
@@ -339,18 +328,18 @@ class CorralController extends Controller
             return 'sin_capacidad';
         }
 
+        if ($ocupados > $capacidad) {
+            return 'sobrecupo';
+        }
+
         $porcentaje = ($ocupados / $capacidad) * 100;
 
         if ($porcentaje >= 100) {
-            return 'lleno';
+            return 'saturado';
         }
 
         if ($porcentaje >= 85) {
-            return 'casi_lleno';
-        }
-
-        if ($porcentaje >= 60) {
-            return 'ocupacion_media';
+            return 'en_riesgo';
         }
 
         return 'disponible';
@@ -393,6 +382,106 @@ class CorralController extends Controller
             'baja',
             'baja sanitaria',
         ];
+    }
+
+    private function formatearCorral(Corral $corral, bool $incluirAnimales = false, bool $incluirBloqueados = false): array
+    {
+        $animalesRelacionados = $corral->relationLoaded('animales')
+            ? $corral->animales
+            : collect();
+
+        $animalesActivos = $animalesRelacionados
+            ->filter(function ($animal) {
+                return !$this->animalBloqueadoPorEstado($animal);
+            })
+            ->values();
+
+        $ocupados = $animalesActivos->count();
+        $capacidad = (int) $corral->capacidad;
+        $disponibles = max($capacidad - $ocupados, 0);
+        $excedente = max($ocupados - $capacidad, 0);
+        $porcentaje = $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 2) : 0;
+        $estado = $this->estadoOcupacion($ocupados, $capacidad);
+
+        $data = [
+            'id' => $corral->id,
+            'nombre' => $corral->nombre,
+            'capacidad' => $capacidad,
+            'tipo_corral' => $corral->tipo_corral ?? 'general',
+            'ocupados' => $ocupados,
+            'disponibles' => $disponibles,
+            'excedente' => $excedente,
+            'ocupacion' => $porcentaje,
+            'porcentaje_ocupacion' => $porcentaje,
+            'estado_ocupacion' => $estado,
+            'saturado' => $estado === 'saturado',
+            'en_riesgo' => $estado === 'en_riesgo',
+            'sobrecupo' => $estado === 'sobrecupo',
+            'alerta_ocupacion' => $this->alertaOcupacion($corral, $ocupados, $capacidad, $porcentaje, $estado),
+
+            // Compatibilidad temporal con frontend viejo.
+            'lechones_count' => $ocupados,
+            'animales_count' => $ocupados,
+        ];
+
+        if ($incluirAnimales) {
+            $data['animales'] = $animalesActivos
+                ->map(function ($animal) {
+                    return $this->formatearAnimal($animal);
+                })
+                ->values();
+        }
+
+        if ($incluirBloqueados) {
+            $data['animales_bloqueados_en_corral'] = $animalesRelacionados
+                ->filter(function ($animal) {
+                    return $this->animalBloqueadoPorEstado($animal);
+                })
+                ->map(function ($animal) {
+                    return $this->formatearAnimal($animal);
+                })
+                ->values();
+        }
+
+        return $data;
+    }
+
+    private function alertaOcupacion(Corral $corral, int $ocupados, int $capacidad, float $porcentaje, string $estado): ?array
+    {
+        $nombre = $corral->nombre ?? ('Corral #' . $corral->id);
+        $tipo = $corral->tipo_corral ?? 'general';
+
+        if ($estado === 'sobrecupo') {
+            return [
+                'tipo' => 'corral_sobrecupo',
+                'nivel' => 'critica',
+                'corral_id' => $corral->id,
+                'mensaje' => "Sobrecupo crítico en {$nombre} ({$tipo}): {$ocupados}/{$capacidad} animales. Hay " . max($ocupados - $capacidad, 0) . " animales excedentes.",
+                'accion_sugerida' => 'Mover animales de inmediato, rotar corrales o preparar venta urgente.',
+            ];
+        }
+
+        if ($estado === 'saturado') {
+            return [
+                'tipo' => 'corral_saturado',
+                'nivel' => 'critica',
+                'corral_id' => $corral->id,
+                'mensaje' => "Corral saturado: {$nombre} ({$tipo}) está al {$porcentaje}% de ocupación.",
+                'accion_sugerida' => 'No asignar más animales. Mover, rotar o vender animales antes de nuevos ingresos.',
+            ];
+        }
+
+        if ($estado === 'en_riesgo') {
+            return [
+                'tipo' => 'corral_en_riesgo',
+                'nivel' => 'importante',
+                'corral_id' => $corral->id,
+                'mensaje' => "Corral en riesgo: {$nombre} ({$tipo}) está al {$porcentaje}% de ocupación.",
+                'accion_sugerida' => 'Planear rotación antes de llegar a saturación.',
+            ];
+        }
+
+        return null;
     }
 
     private function formatearAnimal(Animal $animal): array

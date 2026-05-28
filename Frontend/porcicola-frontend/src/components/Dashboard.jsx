@@ -100,6 +100,56 @@ const esControlHierroPendiente = (estado) => {
   return estado === "pendiente_en_ventana" || estado === "pendiente_atrasado";
 };
 
+const estadoVisualCorral = (estado) => {
+  if (estado === "sobrecupo") {
+    return {
+      label: "Sobrecupo crítico",
+      bg: "#fee2e2",
+      border: "#b91c1c",
+      text: "#7f1d1d",
+      bar: "#b91c1c",
+    };
+  }
+
+  if (estado === "saturado") {
+    return {
+      label: "Saturado",
+      bg: "#fee2e2",
+      border: "#dc2626",
+      text: "#991b1b",
+      bar: "#dc2626",
+    };
+  }
+
+  if (estado === "en_riesgo") {
+    return {
+      label: "En riesgo",
+      bg: "#ffedd5",
+      border: "#f97316",
+      text: "#9a3412",
+      bar: "#f97316",
+    };
+  }
+
+  if (estado === "sin_capacidad") {
+    return {
+      label: "Sin capacidad definida",
+      bg: "#f1f5f9",
+      border: "#64748b",
+      text: "#334155",
+      bar: "#64748b",
+    };
+  }
+
+  return {
+    label: "Disponible",
+    bg: "#dcfce7",
+    border: "#16a34a",
+    text: "#166534",
+    bar: "#16a34a",
+  };
+};
+
 function KpiCard({ icon, title, value, subtitle, onClick, danger = false }) {
   return (
     <div
@@ -287,7 +337,26 @@ export default function Dashboard() {
   const porEtapa = toArray(animales.por_etapa || data?.por_etapa);
   const porSexo = toArray(animales.por_sexo);
   const corrales = toArray(corralesResumen.corrales || data?.corrales);
-  const alertas = toArray(alertasGenerales.ultimas);
+
+  const alertasGeneralesLista = toArray(alertasGenerales.ultimas);
+  const alertasCorrales = toArray(corralesResumen.alertas);
+
+  const alertas = [
+    ...alertasGeneralesLista,
+    ...alertasCorrales.filter((alertaCorral) => {
+      return !alertasGeneralesLista.some((alertaGeneral) => {
+        return (
+          alertaGeneral?.tipo === alertaCorral?.tipo &&
+          alertaGeneral?.mensaje === alertaCorral?.mensaje
+        );
+      });
+    }),
+  ];
+
+  const corralesEnAtencion = corrales.filter((corral) =>
+    ["en_riesgo", "saturado", "sobrecupo"].includes(corral.estado_ocupacion)
+  );
+
   const stockCritico = toArray(alimentacion.stock_critico);
   const medicamentosCriticos = toArray(sanidad.medicamentos_criticos);
   const eventosSanitarios = toArray(sanidad.eventos_recientes);
@@ -659,9 +728,13 @@ export default function Dashboard() {
           icon="🏠"
           title="Espacios disponibles"
           value={formatNumber(corralesResumen.espacios_disponibles)}
-          subtitle={`${formatNumber(corralesResumen.corrales_saturados)} corrales saturados`}
+          subtitle={`${formatNumber(corralesResumen.corrales_en_riesgo)} en riesgo · ${formatNumber(corralesResumen.corrales_saturados)} saturados · ${formatNumber(corralesResumen.corrales_sobrecupo)} sobrecupo`}
           onClick={() => navigate("/corrales")}
-          danger={n(corralesResumen.corrales_saturados) > 0}
+          danger={
+            n(corralesResumen.corrales_en_riesgo) > 0 ||
+            n(corralesResumen.corrales_saturados) > 0 ||
+            n(corralesResumen.corrales_sobrecupo) > 0
+          }
         />
 
         <KpiCard
@@ -1006,35 +1079,203 @@ export default function Dashboard() {
       </div>
 
       <div className="section">
-        <h2>🏠 Corrales</h2>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "14px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2 style={{ marginBottom: "8px" }}>🏠 Corrales</h2>
+            <p style={{ color: "#475569", margin: 0 }}>
+              Monitoreo de capacidad, ocupación real y alertas de saturación.
+            </p>
+          </div>
 
-        <div className="cards">
+          <button
+            onClick={() => navigate("/corrales")}
+            style={{
+              background: "#2563eb",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "12px",
+              padding: "11px 16px",
+              fontWeight: 900,
+              cursor: "pointer",
+              boxShadow: "0 8px 22px rgba(37, 99, 235, 0.22)",
+            }}
+          >
+            Abrir Corrales
+          </button>
+        </div>
+
+        <div className="cards" style={{ marginTop: "18px" }}>
           <KpiCard icon="🏠" title="Corrales" value={formatNumber(corralesResumen.total)} />
           <KpiCard icon="📦" title="Capacidad total" value={formatNumber(corralesResumen.capacidad_total)} />
           <KpiCard icon="🐖" title="Ocupados" value={formatNumber(corralesResumen.ocupados)} />
-          <KpiCard icon="🚨" title="Saturados" value={formatNumber(corralesResumen.corrales_saturados)} danger={n(corralesResumen.corrales_saturados) > 0} />
+          <KpiCard icon="✅" title="Disponibles" value={formatNumber(corralesResumen.espacios_disponibles)} />
+          <KpiCard
+            icon="⚠️"
+            title="En riesgo"
+            value={formatNumber(corralesResumen.corrales_en_riesgo)}
+            danger={n(corralesResumen.corrales_en_riesgo) > 0}
+          />
+          <KpiCard
+            icon="🚨"
+            title="Saturados"
+            value={formatNumber(corralesResumen.corrales_saturados)}
+            subtitle={`Sobrecupo: ${formatNumber(corralesResumen.corrales_sobrecupo)}`}
+            danger={
+              n(corralesResumen.corrales_saturados) > 0 ||
+              n(corralesResumen.corrales_sobrecupo) > 0
+            }
+          />
         </div>
+
+        <div style={{ marginTop: "18px" }}>
+          {alertasCorrales.length > 0 ? (
+            alertasCorrales.map((alerta, index) => (
+              <AlertItem
+                key={`alerta-corral-${alerta?.corral_id || index}`}
+                alerta={alerta}
+                index={index}
+              />
+            ))
+          ) : (
+            <div
+              style={{
+                background: "#ecfdf5",
+                border: "1px solid #bbf7d0",
+                color: "#166534",
+                borderRadius: "14px",
+                padding: "14px 16px",
+                fontWeight: 800,
+              }}
+            >
+              Sin alertas de saturación activas. Los corrales tienen espacio operativo disponible.
+            </div>
+          )}
+        </div>
+
+        {corralesEnAtencion.length > 0 && (
+          <div
+            style={{
+              marginTop: "18px",
+              padding: "14px 16px",
+              borderRadius: "14px",
+              background: "#fff7ed",
+              border: "1px solid #fed7aa",
+              color: "#9a3412",
+              fontWeight: 800,
+            }}
+          >
+            Atención: hay {formatNumber(corralesEnAtencion.length)} corral(es) que requieren revisión operativa.
+          </div>
+        )}
 
         <div className="corrales-grid" style={{ marginTop: "20px" }}>
           {corrales.length > 0 ? (
-            corrales.map((corral) => (
-              <div key={corral.id} className="corral-card">
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-                  <h3>{corral.nombre}</h3>
-                  <strong>{formatNumber(corral.ocupacion, 1)}%</strong>
-                </div>
+            corrales.map((corral) => {
+              const visual = estadoVisualCorral(corral.estado_ocupacion);
 
-                <p>{formatNumber(corral.ocupados)} / {formatNumber(corral.capacidad)} animales</p>
-                <p style={{ color: "#aaa" }}>Disponibles: {formatNumber(corral.disponibles)}</p>
-
-                <div className="ocupacion-bar">
+              return (
+                <div
+                  key={corral.id}
+                  className="corral-card"
+                  style={{
+                    border: `1px solid ${visual.border}`,
+                    boxShadow:
+                      corral.estado_ocupacion === "disponible"
+                        ? undefined
+                        : "0 10px 26px rgba(15, 23, 42, 0.14)",
+                  }}
+                >
                   <div
-                    className={`ocupacion-fill ${n(corral.ocupacion) >= 90 ? "danger" : n(corral.ocupacion) >= 70 ? "warning" : "safe"}`}
-                    style={{ width: `${Math.min(n(corral.ocupacion), 100)}%` }}
-                  />
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "10px",
+                      marginBottom: "10px",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <div>
+                      <h3 style={{ marginBottom: "4px" }}>{corral.nombre}</h3>
+                      <p style={{ margin: 0, color: "#64748b", fontWeight: 800 }}>
+                        {readable(corral.tipo_corral)}
+                      </p>
+                    </div>
+
+                    <span
+                      style={{
+                        background: visual.bg,
+                        color: visual.text,
+                        border: `1px solid ${visual.border}`,
+                        padding: "6px 10px",
+                        borderRadius: "999px",
+                        fontSize: "12px",
+                        fontWeight: 900,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {visual.label}
+                    </span>
+                  </div>
+
+                  <strong style={{ fontSize: "22px", color: visual.text }}>
+                    {formatNumber(corral.ocupacion, 1)}%
+                  </strong>
+
+                  <p style={{ marginTop: "8px" }}>
+                    {formatNumber(corral.ocupados)} / {formatNumber(corral.capacidad)} animales
+                  </p>
+
+                  <p style={{ color: "#64748b" }}>
+                    Disponibles: <strong>{formatNumber(corral.disponibles)}</strong>
+                  </p>
+
+                  {n(corral.excedente) > 0 && (
+                    <p style={{ color: "#991b1b", fontWeight: 900 }}>
+                      Sobrecupo: {formatNumber(corral.excedente)} animal(es) excedente(s)
+                    </p>
+                  )}
+
+                  <div className="ocupacion-bar">
+                    <div
+                      className="ocupacion-fill"
+                      style={{
+                        width: `${Math.min(n(corral.ocupacion), 100)}%`,
+                        background: visual.bar,
+                      }}
+                    />
+                  </div>
+
+                  {corral.alerta_ocupacion && (
+                    <div
+                      style={{
+                        marginTop: "12px",
+                        padding: "10px 12px",
+                        borderRadius: "12px",
+                        background: visual.bg,
+                        border: `1px solid ${visual.border}`,
+                        color: visual.text,
+                        fontWeight: 800,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {corral.alerta_ocupacion.mensaje}
+                      <br />
+                      <span style={{ fontWeight: 700 }}>
+                        Acción sugerida: {corral.alerta_ocupacion.accion_sugerida}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <EmptyState text="Sin corrales registrados." />
           )}

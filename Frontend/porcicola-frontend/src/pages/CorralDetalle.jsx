@@ -55,18 +55,27 @@ export default function CorralDetalle() {
   };
 
   const obtenerEstadoVisual = (estado) => {
-    if (estado === "lleno") {
+    if (estado === "sobrecupo") {
       return {
-        label: "Lleno",
+        label: "Sobrecupo crítico",
+        bg: "#fee2e2",
+        border: "#b91c1c",
+        text: "#7f1d1d",
+      };
+    }
+
+    if (estado === "saturado") {
+      return {
+        label: "Saturado",
         bg: "#fee2e2",
         border: "#dc2626",
         text: "#991b1b",
       };
     }
 
-    if (estado === "casi_lleno") {
+    if (estado === "en_riesgo") {
       return {
-        label: "Casi lleno",
+        label: "En riesgo",
         bg: "#ffedd5",
         border: "#f97316",
         text: "#9a3412",

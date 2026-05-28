@@ -102,8 +102,8 @@ use App\Models\Corral;
 
 Route::get('/corrales', [CorralController::class, 'index']);
 Route::get('/corrales/resumen', [CorralController::class, 'resumen']);
+Route::get('/corrales/alertas-ocupacion', [CorralController::class, 'alertasOcupacion']);
 Route::get('/corrales/{id}', [CorralController::class, 'show']);
-
 Route::post('/corrales', [CorralController::class, 'store']);
 Route::put('/corrales/{id}', [CorralController::class, 'update']);
 Route::delete('/corrales/{id}', [CorralController::class, 'destroy']);

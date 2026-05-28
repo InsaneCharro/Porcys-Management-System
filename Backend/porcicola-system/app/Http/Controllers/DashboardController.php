@@ -339,19 +339,18 @@ class DashboardController extends Controller
                 'espacios_disponibles' => 0,
                 'corrales_saturados' => 0,
                 'corrales_en_riesgo' => 0,
+                'corrales_sobrecupo' => 0,
                 'corrales' => [],
                 'por_tipo' => [],
                 'alertas' => [],
             ];
         }
 
-        $corralesBase = DB::table('corrales')->get();
+        $corralesBase = DB::table('corrales')->orderBy('id')->get();
 
         $corrales = collect();
         $capacidadTotal = 0;
         $ocupadosTotal = 0;
-        $saturados = 0;
-        $enRiesgo = 0;
         $alertas = [];
 
         foreach ($corralesBase as $corral) {
@@ -381,34 +380,41 @@ class DashboardController extends Controller
                 $ocupados = $ocupadosQuery->count();
             }
 
-            $ocupacion = $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 1) : 0;
+            $ocupacion = $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 2) : 0;
             $disponibles = max($capacidad - $ocupados, 0);
-
-            $saturado = $capacidad > 0 && $ocupacion >= 100;
-            $riesgo = $capacidad > 0 && $ocupacion >= 85 && $ocupacion < 100;
+            $excedente = max($ocupados - $capacidad, 0);
 
             $estadoOcupacion = 'disponible';
 
-            if ($saturado) {
-                $estadoOcupacion = 'lleno';
-                $saturados++;
+            if ($capacidad <= 0) {
+                $estadoOcupacion = 'sin_capacidad';
+            } elseif ($ocupados > $capacidad) {
+                $estadoOcupacion = 'sobrecupo';
+
+                $alertas[] = [
+                    'tipo' => 'corral_sobrecupo',
+                    'nivel' => 'critica',
+                    'mensaje' => 'Sobrecupo crítico en ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' (' . $tipoCorral . '): ' . $ocupados . '/' . $capacidad . ' animales. Hay ' . $excedente . ' animales excedentes.',
+                    'accion_sugerida' => 'Mover animales de inmediato, rotar corrales o preparar venta urgente.',
+                ];
+            } elseif ($ocupacion >= 100) {
+                $estadoOcupacion = 'saturado';
 
                 $alertas[] = [
                     'tipo' => 'corral_saturado',
                     'nivel' => 'critica',
-                    'mensaje' => 'Corral lleno: ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' (' . $tipoCorral . ') con ' . $ocupacion . '% de ocupación.',
+                    'mensaje' => 'Corral saturado: ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' (' . $tipoCorral . ') está al ' . $ocupacion . '% de ocupación.',
+                    'accion_sugerida' => 'No asignar más animales. Mover, rotar o vender animales antes de nuevos ingresos.',
                 ];
-            } elseif ($riesgo) {
-                $estadoOcupacion = 'casi_lleno';
-                $enRiesgo++;
+            } elseif ($ocupacion >= 85) {
+                $estadoOcupacion = 'en_riesgo';
 
                 $alertas[] = [
-                    'tipo' => 'corral_casi_lleno',
-                    'nivel' => 'advertencia',
-                    'mensaje' => 'Corral casi lleno: ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' (' . $tipoCorral . ') con ' . $ocupacion . '% de ocupación.',
+                    'tipo' => 'corral_en_riesgo',
+                    'nivel' => 'importante',
+                    'mensaje' => 'Corral en riesgo: ' . ($corral->nombre ?? ('Corral #' . $corral->id)) . ' (' . $tipoCorral . ') está al ' . $ocupacion . '% de ocupación.',
+                    'accion_sugerida' => 'Planear rotación antes de llegar a saturación.',
                 ];
-            } elseif ($ocupacion >= 60) {
-                $estadoOcupacion = 'ocupacion_media';
             }
 
             $capacidadTotal += $capacidad;
@@ -421,11 +427,13 @@ class DashboardController extends Controller
                 'tipo_corral' => $tipoCorral,
                 'ocupados' => $ocupados,
                 'disponibles' => $disponibles,
+                'excedente' => $excedente,
                 'ocupacion' => $ocupacion,
                 'porcentaje_ocupacion' => $ocupacion,
                 'estado_ocupacion' => $estadoOcupacion,
-                'saturado' => $saturado,
-                'en_riesgo' => $riesgo,
+                'saturado' => $estadoOcupacion === 'saturado',
+                'en_riesgo' => $estadoOcupacion === 'en_riesgo',
+                'sobrecupo' => $estadoOcupacion === 'sobrecupo',
             ]);
         }
 
@@ -441,7 +449,12 @@ class DashboardController extends Controller
                     'capacidad' => $capacidad,
                     'ocupados' => $ocupados,
                     'disponibles' => max($capacidad - $ocupados, 0),
-                    'porcentaje_ocupacion' => $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 1) : 0,
+                    'porcentaje_ocupacion' => $capacidad > 0 ? round(($ocupados / $capacidad) * 100, 2) : 0,
+                    'corrales_en_riesgo' => $grupo->where('estado_ocupacion', 'en_riesgo')->count(),
+                    'corrales_saturados' => $grupo->filter(function ($corral) {
+                        return in_array($corral['estado_ocupacion'], ['saturado', 'sobrecupo'], true);
+                    })->count(),
+                    'corrales_sobrecupo' => $grupo->where('estado_ocupacion', 'sobrecupo')->count(),
                 ];
             })
             ->values();
@@ -451,8 +464,11 @@ class DashboardController extends Controller
             'capacidad_total' => $capacidadTotal,
             'ocupados' => $ocupadosTotal,
             'espacios_disponibles' => max($capacidadTotal - $ocupadosTotal, 0),
-            'corrales_saturados' => $saturados,
-            'corrales_en_riesgo' => $enRiesgo,
+            'corrales_saturados' => $corrales->filter(function ($corral) {
+                return in_array($corral['estado_ocupacion'], ['saturado', 'sobrecupo'], true);
+            })->count(),
+            'corrales_en_riesgo' => $corrales->where('estado_ocupacion', 'en_riesgo')->count(),
+            'corrales_sobrecupo' => $corrales->where('estado_ocupacion', 'sobrecupo')->count(),
             'corrales' => $corrales,
             'por_tipo' => $porTipo,
             'alertas' => $alertas,

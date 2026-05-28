@@ -90,18 +90,27 @@ export default function Corrales() {
   const obtenerEstadoVisual = (corral) => {
     const estado = corral.estado_ocupacion;
 
-    if (estado === "lleno") {
+    if (estado === "sobrecupo") {
       return {
-        label: "Lleno",
+        label: "Sobrecupo crítico",
+        bg: "#fee2e2",
+        border: "#b91c1c",
+        text: "#7f1d1d",
+      };
+    }
+
+    if (estado === "saturado") {
+      return {
+        label: "Saturado",
         bg: "#fee2e2",
         border: "#dc2626",
         text: "#991b1b",
       };
     }
 
-    if (estado === "casi_lleno") {
+    if (estado === "en_riesgo") {
       return {
-        label: "Casi lleno",
+        label: "En riesgo",
         bg: "#ffedd5",
         border: "#f97316",
         text: "#9a3412",
@@ -527,6 +536,33 @@ export default function Corrales() {
                       <p style={{ color: "#475569", marginTop: "8px" }}>
                         Disponibles: <strong>{corral.disponibles}</strong>
                       </p>
+
+                      {Number(corral.excedente || 0) > 0 && (
+                        <p style={{ color: "#991b1b", marginTop: "6px", fontWeight: 900 }}>
+                          Sobrecupo: {corral.excedente} animal(es) excedente(s)
+                        </p>
+                      )}
+
+                      {corral.alerta_ocupacion && (
+                        <div
+                          style={{
+                            marginTop: "10px",
+                            padding: "10px 12px",
+                            borderRadius: "12px",
+                            background: visual.bg,
+                            color: visual.text,
+                            border: `1px solid ${visual.border}`,
+                            fontWeight: 800,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {corral.alerta_ocupacion.mensaje}
+                          <br />
+                          <span style={{ fontWeight: 700 }}>
+                            Acción sugerida: {corral.alerta_ocupacion.accion_sugerida}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div
