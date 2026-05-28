@@ -16,6 +16,7 @@ class DashboardController extends Controller
             $mortalidad = $this->resumenMortalidadBajas();
             $corrales = $this->resumenCorrales();
             $reproduccion = $this->resumenReproduccion();
+            $cambioArea = $this->resumenCambioArea();
             $alimentacionInventario = $this->resumenAlimentacionInventario();
             $sanidad = $this->resumenSanidad();
             $finanzas = $this->resumenFinanzas($mortalidad);
@@ -23,6 +24,7 @@ class DashboardController extends Controller
                 $mortalidad,
                 $corrales,
                 $reproduccion,
+                $cambioArea,
                 $alimentacionInventario,
                 $sanidad
             );
@@ -51,6 +53,8 @@ class DashboardController extends Controller
                 'lechones_vivos' => $animales['lechones_vivos'],
                 'partos_proximos' => $reproduccion['proximos_partos'],
                 'destetes_pendientes' => $reproduccion['destetes_pendientes'],
+                'cambios_area_pendientes' => $cambioArea['total'],
+                'alertas_cambio_area' => $cambioArea['alertas'],
                 'corrales' => $corrales['corrales'],
 
                 // =====================================================
@@ -60,6 +64,7 @@ class DashboardController extends Controller
                 'mortalidad_bajas' => $mortalidad,
                 'corrales_resumen' => $corrales,
                 'reproduccion' => $reproduccion,
+                'cambio_area_rotacion' => $cambioArea,
                 'alimentacion_inventario' => $alimentacionInventario,
                 'sanidad' => $sanidad,
                 'finanzas' => $finanzas,
@@ -68,6 +73,19 @@ class DashboardController extends Controller
         } catch (Throwable $e) {
             return response()->json([
                 'error' => 'Error al construir el dashboard gerencial.',
+                'detalle' => $e->getMessage(),
+                'linea' => $e->getLine(),
+            ], 500);
+        }
+    }
+
+    public function alertasCambioArea()
+    {
+        try {
+            return response()->json($this->resumenCambioArea());
+        } catch (Throwable $e) {
+            return response()->json([
+                'error' => 'Error al construir alertas de cambio de área.',
                 'detalle' => $e->getMessage(),
                 'linea' => $e->getLine(),
             ], 500);
@@ -637,6 +655,292 @@ class DashboardController extends Controller
         ];
     }
 
+    private function resumenCambioArea(): array
+    {
+        $respuestaVacia = [
+            'total' => 0,
+            'criticas' => 0,
+            'importantes' => 0,
+            'informativas' => 0,
+            'requieren_movimiento' => 0,
+            'por_tipo' => [],
+            'alertas' => [],
+        ];
+
+        if (!Schema::hasTable('animales')) {
+            return $respuestaVacia;
+        }
+
+        $alertas = [];
+        $clavesAgregadas = [];
+
+        $agregarAlerta = function (
+            string $tipo,
+            string $nivel,
+            $animalId,
+            string $identificador,
+            ?string $etapa,
+            ?string $areaActual,
+            ?int $edadDias,
+            ?int $corralId,
+            ?string $corralActual,
+            ?string $tipoCorralActual,
+            string $areaSugerida,
+            string $mensaje,
+            string $accionSugerida
+        ) use (&$alertas, &$clavesAgregadas) {
+            $clave = $tipo . '-' . $animalId;
+
+            if (isset($clavesAgregadas[$clave])) {
+                return;
+            }
+
+            $clavesAgregadas[$clave] = true;
+
+            $alertas[] = [
+                'tipo' => $tipo,
+                'nivel' => $nivel,
+                'animal_id' => $animalId,
+                'identificador' => $identificador,
+                'etapa_actual' => $etapa,
+                'area_actual' => $areaActual,
+                'edad_dias' => $edadDias,
+                'corral_id' => $corralId,
+                'corral_actual' => $corralActual,
+                'tipo_corral_actual' => $tipoCorralActual,
+                'area_sugerida' => $areaSugerida,
+                'mensaje' => $mensaje,
+                'accion_sugerida' => $accionSugerida,
+            ];
+        };
+
+        $animalesQuery = DB::table('animales')
+            ->leftJoin('corrales', 'animales.corral_id', '=', 'corrales.id')
+            ->select(
+                'animales.id',
+                'animales.identificador_unico',
+                'animales.fecha_nacimiento',
+                'animales.etapa_actual',
+                'animales.area',
+                'animales.estado',
+                'animales.corral_id',
+                'corrales.nombre as corral_nombre',
+                'corrales.tipo_corral',
+                DB::raw('TIMESTAMPDIFF(DAY, animales.fecha_nacimiento, CURDATE()) as edad_dias')
+            );
+
+        if ($this->hasColumn('animales', 'estado')) {
+            $animalesQuery
+                ->whereRaw("LOWER(COALESCE(animales.estado, '')) NOT LIKE ?", ['%muert%'])
+                ->whereRaw("LOWER(COALESCE(animales.estado, '')) NOT LIKE ?", ['%descart%'])
+                ->whereRaw("LOWER(COALESCE(animales.estado, '')) NOT LIKE ?", ['%baja%'])
+                ->whereRaw("LOWER(COALESCE(animales.estado, '')) NOT LIKE ?", ['%vendid%'])
+                ->whereRaw("LOWER(COALESCE(animales.estado, '')) NOT LIKE ?", ['%sacrific%']);
+        }
+
+        $animales = $animalesQuery
+            ->orderBy('animales.id')
+            ->get();
+
+        foreach ($animales as $animal) {
+            $identificador = $animal->identificador_unico ?: ('Animal #' . $animal->id);
+            $etapa = strtolower(trim((string) $animal->etapa_actual));
+            $area = strtolower(trim((string) $animal->area));
+            $tipoCorral = strtolower(trim((string) $animal->tipo_corral));
+            $edadDias = $animal->edad_dias !== null ? (int) $animal->edad_dias : null;
+            $corralNombre = $animal->corral_nombre ?: 'Sin corral asignado';
+
+            if ($etapa === 'gestante' && $area !== 'maternidad') {
+                $agregarAlerta(
+                    'cambio_area_maternidad',
+                    'importante',
+                    $animal->id,
+                    $identificador,
+                    $animal->etapa_actual,
+                    $animal->area,
+                    $edadDias,
+                    $animal->corral_id,
+                    $corralNombre,
+                    $animal->tipo_corral,
+                    'maternidad',
+                    "Cambio de área pendiente: {$identificador} está gestante y continúa en área {$animal->area}.",
+                    'Mover o preparar a la hembra en maternidad antes del parto.'
+                );
+            }
+
+            if (in_array($etapa, ['lechon', 'lechón', 'crecimiento'], true) && $edadDias !== null && $edadDias >= 28 && $area !== 'engorda') {
+                $agregarAlerta(
+                    'destete_pendiente',
+                    'importante',
+                    $animal->id,
+                    $identificador,
+                    $animal->etapa_actual,
+                    $animal->area,
+                    $edadDias,
+                    $animal->corral_id,
+                    $corralNombre,
+                    $animal->tipo_corral,
+                    'engorda',
+                    "Rotación pendiente: {$identificador} tiene {$edadDias} días y ya superó la ventana de maternidad/destete.",
+                    'Revisar destete y mover a engorda si ya corresponde.'
+                );
+            }
+
+            if ($etapa === 'destete' && $edadDias !== null && $edadDias >= 35 && $area !== 'engorda') {
+                $agregarAlerta(
+                    'destete_a_engorda',
+                    'importante',
+                    $animal->id,
+                    $identificador,
+                    $animal->etapa_actual,
+                    $animal->area,
+                    $edadDias,
+                    $animal->corral_id,
+                    $corralNombre,
+                    $animal->tipo_corral,
+                    'engorda',
+                    "Cambio de área pendiente: {$identificador} está en destete con {$edadDias} días y debe pasar a engorda.",
+                    'Mover a corral de engorda si hay espacio disponible.'
+                );
+            }
+
+            if ($etapa === 'engorda' && $area !== 'engorda') {
+                $agregarAlerta(
+                    'engorda_fuera_de_area',
+                    'critica',
+                    $animal->id,
+                    $identificador,
+                    $animal->etapa_actual,
+                    $animal->area,
+                    $edadDias,
+                    $animal->corral_id,
+                    $corralNombre,
+                    $animal->tipo_corral,
+                    'engorda',
+                    "Ubicación incorrecta: {$identificador} está en etapa engorda pero su área actual es {$animal->area}.",
+                    'Mover a área/corral de engorda para mantener trazabilidad productiva correcta.'
+                );
+            }
+
+            if ($etapa === 'engorda' && $edadDias !== null && $edadDias >= 150) {
+                $agregarAlerta(
+                    'rotacion_venta_engorda',
+                    'informativa',
+                    $animal->id,
+                    $identificador,
+                    $animal->etapa_actual,
+                    $animal->area,
+                    $edadDias,
+                    $animal->corral_id,
+                    $corralNombre,
+                    $animal->tipo_corral,
+                    'venta_rotacion',
+                    "Revisión de rotación: {$identificador} está en engorda con {$edadDias} días.",
+                    'Revisar peso, disponibilidad de corral y posibilidad de venta o rotación.'
+                );
+            }
+
+            if ($etapa === 'enfermeria' && $tipoCorral !== 'enfermeria') {
+                $agregarAlerta(
+                    'enfermeria_fuera_de_corral',
+                    'critica',
+                    $animal->id,
+                    $identificador,
+                    $animal->etapa_actual,
+                    $animal->area,
+                    $edadDias,
+                    $animal->corral_id,
+                    $corralNombre,
+                    $animal->tipo_corral,
+                    'enfermeria',
+                    "Ubicación sanitaria pendiente: {$identificador} está en etapa enfermería pero no está en un corral de enfermería.",
+                    'Mover a corral de enfermería o verificar su estado sanitario.'
+                );
+            }
+        }
+
+        if (Schema::hasTable('gestaciones') && $this->hasColumn('gestaciones', 'fecha_probable_parto')) {
+            $gestaciones = DB::table('gestaciones')
+                ->leftJoin('animales', function ($join) {
+                    $join->on('gestaciones.hembra_id', '=', 'animales.id')
+                        ->orOn('gestaciones.animal_id', '=', 'animales.id');
+                })
+                ->leftJoin('corrales', 'animales.corral_id', '=', 'corrales.id')
+                ->whereNotNull('gestaciones.fecha_probable_parto')
+                ->whereDate('gestaciones.fecha_probable_parto', '>=', now()->toDateString())
+                ->whereDate('gestaciones.fecha_probable_parto', '<=', now()->addDays(10)->toDateString())
+                ->when($this->hasColumn('gestaciones', 'estado'), function ($query) {
+                    $query->whereIn('gestaciones.estado', ['activa', 'confirmada', 'gestante']);
+                })
+                ->select(
+                    'gestaciones.id as gestacion_id',
+                    'gestaciones.fecha_probable_parto',
+                    'animales.id as animal_id',
+                    'animales.identificador_unico',
+                    'animales.etapa_actual',
+                    'animales.area',
+                    'animales.corral_id',
+                    'corrales.nombre as corral_nombre',
+                    'corrales.tipo_corral',
+                    DB::raw('DATEDIFF(gestaciones.fecha_probable_parto, CURDATE()) as dias_para_parto'),
+                    DB::raw('TIMESTAMPDIFF(DAY, animales.fecha_nacimiento, CURDATE()) as edad_dias')
+                )
+                ->get();
+
+            foreach ($gestaciones as $gestacion) {
+                if (!$gestacion->animal_id) {
+                    continue;
+                }
+
+                $identificador = $gestacion->identificador_unico ?: ('Animal #' . $gestacion->animal_id);
+                $area = strtolower(trim((string) $gestacion->area));
+                $tipoCorral = strtolower(trim((string) $gestacion->tipo_corral));
+
+                if ($area !== 'maternidad' || $tipoCorral !== 'maternidad') {
+                    $agregarAlerta(
+                        'parto_proximo_mover_maternidad',
+                        'critica',
+                        $gestacion->animal_id,
+                        $identificador,
+                        $gestacion->etapa_actual,
+                        $gestacion->area,
+                        $gestacion->edad_dias !== null ? (int) $gestacion->edad_dias : null,
+                        $gestacion->corral_id,
+                        $gestacion->corral_nombre ?: 'Sin corral asignado',
+                        $gestacion->tipo_corral,
+                        'maternidad',
+                        "Parto próximo: {$identificador} está a {$gestacion->dias_para_parto} día(s) del parto y debe estar en maternidad.",
+                        'Mover a maternidad antes del parto para evitar nacimiento en área incorrecta.'
+                    );
+                }
+            }
+        }
+
+        $coleccion = collect($alertas);
+
+        return [
+            'total' => $coleccion->count(),
+            'criticas' => $coleccion->where('nivel', 'critica')->count(),
+            'importantes' => $coleccion->where('nivel', 'importante')->count(),
+            'informativas' => $coleccion->where('nivel', 'informativa')->count(),
+            'requieren_movimiento' => $coleccion
+                ->filter(function ($alerta) {
+                    return in_array($alerta['nivel'], ['critica', 'importante'], true);
+                })
+                ->count(),
+            'por_tipo' => $coleccion
+                ->groupBy('tipo')
+                ->map(function ($grupo, $tipo) {
+                    return [
+                        'tipo' => $tipo,
+                        'total' => $grupo->count(),
+                    ];
+                })
+                ->values(),
+            'alertas' => $alertas,
+        ];
+    }
+
     private function resumenAlimentacionInventario(): array
     {
         $stockTotal = 0;
@@ -962,6 +1266,7 @@ class DashboardController extends Controller
         array $mortalidad,
         array $corrales,
         array $reproduccion,
+        array $cambioArea,
         array $alimentacionInventario,
         array $sanidad
     ): array {
@@ -969,6 +1274,7 @@ class DashboardController extends Controller
 
         $alertas = array_merge($alertas, $mortalidad['alertas'] ?? []);
         $alertas = array_merge($alertas, $corrales['alertas'] ?? []);
+        $alertas = array_merge($alertas, $cambioArea['alertas'] ?? []);
         $alertas = array_merge($alertas, $alimentacionInventario['alertas'] ?? []);
         $alertas = array_merge($alertas, $sanidad['alertas'] ?? []);
 

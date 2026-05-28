@@ -20,7 +20,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\CorralController;
 
 Route::get('/dashboard', [DashboardController::class, 'resumen']);
-
+Route::get('/alertas/cambio-area', [DashboardController::class, 'alertasCambioArea']);
 Route::get('/pesos/historial/{animal_id}', [PesoController::class, 'historial']);
 
 Route::get('/pesos/comparacion', [PesoController::class, 'comparacion']);

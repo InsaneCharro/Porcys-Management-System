@@ -329,6 +329,7 @@ export default function Dashboard() {
   const mortalidad = data?.mortalidad_bajas || {};
   const corralesResumen = data?.corrales_resumen || {};
   const reproduccion = data?.reproduccion || {};
+  const cambioArea = data?.cambio_area_rotacion || {};
   const alimentacion = data?.alimentacion_inventario || {};
   const sanidad = data?.sanidad || {};
   const finanzas = data?.finanzas || {};
@@ -363,6 +364,7 @@ export default function Dashboard() {
   const consumosRecientes = toArray(alimentacion.consumos_recientes);
   const bajasRecientes = toArray(mortalidad.recientes);
   const alertasParto = toArray(reproduccion.alertas_parto || data?.alertas_parto);
+  const alertasCambioArea = toArray(cambioArea.alertas || data?.alertas_cambio_area);
 
   const resumenPesosObligatorios = useMemo(() => {
     const resumen = {
@@ -743,6 +745,15 @@ export default function Dashboard() {
           value={formatNumber(reproduccion.hembras_gestantes)}
           subtitle={`${formatNumber(reproduccion.proximos_partos)} partos próximos`}
           onClick={() => navigate("/gestaciones")}
+        />
+
+        <KpiCard
+          icon="🔁"
+          title="Cambios de área"
+          value={formatNumber(cambioArea.total)}
+          subtitle={`Críticas: ${formatNumber(cambioArea.criticas)} · Importantes: ${formatNumber(cambioArea.importantes)}`}
+          onClick={() => navigate("/animales")}
+          danger={n(cambioArea.criticas) > 0 || n(cambioArea.importantes) > 0}
         />
 
         <KpiCard
@@ -1278,6 +1289,88 @@ export default function Dashboard() {
             })
           ) : (
             <EmptyState text="Sin corrales registrados." />
+          )}
+        </div>
+      </div>
+
+      <div className="section">
+        <h2>🔁 Cambio de área / Rotación operativa</h2>
+
+        <div className="cards">
+          <KpiCard
+            icon="🔁"
+            title="Pendientes"
+            value={formatNumber(cambioArea.total)}
+            danger={n(cambioArea.total) > 0}
+          />
+          <KpiCard
+            icon="🚨"
+            title="Críticas"
+            value={formatNumber(cambioArea.criticas)}
+            danger={n(cambioArea.criticas) > 0}
+          />
+          <KpiCard
+            icon="⚠️"
+            title="Importantes"
+            value={formatNumber(cambioArea.importantes)}
+            danger={n(cambioArea.importantes) > 0}
+          />
+          <KpiCard
+            icon="📌"
+            title="Requieren movimiento"
+            value={formatNumber(cambioArea.requieren_movimiento)}
+            danger={n(cambioArea.requieren_movimiento) > 0}
+          />
+        </div>
+
+        <div style={{ marginTop: "18px" }}>
+          {alertasCambioArea.length > 0 ? (
+            alertasCambioArea.map((alerta, index) => (
+              <div
+                key={`cambio-area-${alerta?.animal_id || index}-${alerta?.tipo || "alerta"}`}
+                style={{
+                  background:
+                    alerta?.nivel === "critica"
+                      ? "rgba(244,67,54,0.14)"
+                      : alerta?.nivel === "importante"
+                      ? "rgba(255,152,0,0.14)"
+                      : "rgba(33,150,243,0.12)",
+                  border:
+                    alerta?.nivel === "critica"
+                      ? "1px solid rgba(244,67,54,0.65)"
+                      : alerta?.nivel === "importante"
+                      ? "1px solid rgba(255,152,0,0.65)"
+                      : "1px solid rgba(33,150,243,0.55)",
+                  borderRadius: "12px",
+                  padding: "12px",
+                  marginBottom: "10px",
+                }}
+              >
+                <strong>
+                  {alerta.identificador || "Animal sin identificador"} · {readable(alerta.nivel)}
+                </strong>
+
+                <p style={{ margin: "6px 0", color: "#475569" }}>
+                  {alerta.mensaje}
+                </p>
+
+                <p style={{ margin: "6px 0", color: "#64748b" }}>
+                  Etapa: <strong>{readable(alerta.etapa_actual)}</strong> · Área actual:{" "}
+                  <strong>{readable(alerta.area_actual)}</strong> · Área sugerida:{" "}
+                  <strong>{readable(alerta.area_sugerida)}</strong>
+                </p>
+
+                <p style={{ margin: "6px 0", color: "#64748b" }}>
+                  Corral actual: <strong>{alerta.corral_actual || "Sin corral"}</strong>
+                </p>
+
+                <p style={{ margin: "6px 0 0", fontWeight: 800 }}>
+                  Acción sugerida: {alerta.accion_sugerida}
+                </p>
+              </div>
+            ))
+          ) : (
+            <EmptyState text="No hay cambios de área pendientes." />
           )}
         </div>
       </div>
