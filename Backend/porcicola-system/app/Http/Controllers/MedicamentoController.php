@@ -97,6 +97,58 @@ class MedicamentoController extends Controller
         }
     }
 
+    public function merma(Request $request, $id)
+    {
+        $request->validate([
+            'cantidad' => 'required|integer|min:1',
+            'motivo' => 'required|string|max:255',
+        ]);
+
+        try {
+            $medicamento = DB::transaction(function () use ($request, $id) {
+                $medicamento = Medicamento::where('id', $id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $cantidad = (int) $request->cantidad;
+                $stockActual = (int) ($medicamento->stock ?? 0);
+
+                if ($stockActual < $cantidad) {
+                    throw new \RuntimeException(
+                        'Stock insuficiente para registrar merma. Stock actual: ' . $stockActual
+                    );
+                }
+
+                $medicamento->decrement('stock', $cantidad);
+
+                MovimientoMedicamento::create([
+                    'medicamento_id' => $medicamento->id,
+                    'tipo' => 'ajuste',
+                    'cantidad' => $cantidad,
+                    'motivo' => 'Merma de medicamento: ' . $request->motivo,
+                    'usuario' => 'Usuario',
+                ]);
+
+                return $medicamento->fresh();
+            });
+
+            return response()->json([
+                'message' => 'Merma de medicamento registrada correctamente',
+                'medicamento' => $medicamento,
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Error al registrar merma de medicamento',
+                'error' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ], 500);
+        }
+    }
+
     public function aplicar(Request $request)
     {
         $request->validate([

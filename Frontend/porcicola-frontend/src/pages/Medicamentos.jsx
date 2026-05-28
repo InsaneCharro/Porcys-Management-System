@@ -24,6 +24,12 @@ export default function Medicamentos() {
     motivo: '',
   });
 
+    const [mermaForm, setMermaForm] = useState({
+    medicamento_id: '',
+    cantidad: '',
+    motivo: '',
+  });
+
   const [aplicacionForm, setAplicacionForm] = useState({
     animal_id: '',
     medicamento_id: '',
@@ -107,6 +113,50 @@ export default function Medicamentos() {
     } catch (error) {
       console.error(error);
       alert('Error registrando entrada');
+    }
+  };
+
+  const registrarMerma = async () => {
+    if (!mermaForm.medicamento_id || !mermaForm.cantidad || !mermaForm.motivo.trim()) {
+      alert('Selecciona medicamento, cantidad y motivo de merma');
+      return;
+    }
+
+    const medicamento = medicamentos.find(
+      (item) => String(item.id) === String(mermaForm.medicamento_id)
+    );
+
+    const confirmar = window.confirm(
+      `Vas a registrar una merma de ${mermaForm.cantidad} unidad(es) para ${
+        medicamento?.nombre || 'el medicamento seleccionado'
+      }.\n\nMotivo: ${mermaForm.motivo}\n\nEsta acción descontará stock y quedará registrada como ajuste. ¿Continuar?`
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    try {
+      await axios.post(`${API}/medicamentos/${mermaForm.medicamento_id}/merma`, {
+        cantidad: mermaForm.cantidad,
+        motivo: mermaForm.motivo,
+      });
+
+      setMermaForm({
+        medicamento_id: '',
+        cantidad: '',
+        motivo: '',
+      });
+
+      cargarDatos();
+      alert('Merma de medicamento registrada');
+    } catch (error) {
+      console.error(error);
+      alert(
+        error.response?.data?.message ||
+          error.response?.data?.error ||
+          'Error registrando merma de medicamento'
+      );
     }
   };
 
@@ -280,7 +330,7 @@ export default function Medicamentos() {
       <h1 style={styles.title}>Medicamentos</h1>
 
       <div style={styles.tabs}>
-        {['inventario', 'entradas', 'aplicaciones', 'movimientos', 'alertas'].map((t) => (
+          {['inventario', 'entradas', 'mermas', 'aplicaciones', 'movimientos', 'alertas'].map((t) => (
           <button
             key={t}
             style={styles.tabButton(tab === t)}
@@ -428,6 +478,70 @@ export default function Medicamentos() {
         </div>
       )}
 
+      {tab === 'mermas' && (
+        <div style={styles.card}>
+          <h2>Registrar merma de medicamento</h2>
+
+          <p style={{ color: '#64748b', marginTop: 0 }}>
+            Registra pérdidas, caducidad, daño, derrame o ajuste operativo de medicamentos.
+            La merma descuenta stock y queda registrada en movimientos como ajuste trazable.
+          </p>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <select
+              style={styles.input}
+              value={mermaForm.medicamento_id}
+              onChange={(e) =>
+                setMermaForm({
+                  ...mermaForm,
+                  medicamento_id: e.target.value,
+                })
+              }
+            >
+              <option value=''>Selecciona medicamento</option>
+              {medicamentos.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre} — stock: {m.stock}
+                </option>
+              ))}
+            </select>
+
+            <input
+              style={styles.input}
+              type='number'
+              min='1'
+              placeholder='Cantidad perdida'
+              value={mermaForm.cantidad}
+              onChange={(e) =>
+                setMermaForm({
+                  ...mermaForm,
+                  cantidad: e.target.value,
+                })
+              }
+            />
+
+            <input
+              style={styles.input}
+              placeholder='Motivo de merma'
+              value={mermaForm.motivo}
+              onChange={(e) =>
+                setMermaForm({
+                  ...mermaForm,
+                  motivo: e.target.value,
+                })
+              }
+            />
+
+            <button
+              style={{ ...styles.button, backgroundColor: '#9333ea' }}
+              onClick={registrarMerma}
+            >
+              Registrar merma
+            </button>
+          </div>
+        </div>
+      )}
+
       {tab === 'aplicaciones' && (
         <div style={styles.card}>
           <h2>Aplicar medicamento</h2>
@@ -552,20 +666,26 @@ export default function Medicamentos() {
                           fontWeight: '700',
                           fontSize: '12px',
                           backgroundColor:
-                            m.tipo === 'entrada'
+                            String(m.motivo || '').toLowerCase().includes('merma')
+                              ? '#fee2e2'
+                              : m.tipo === 'entrada'
                               ? '#dcfce7'
                               : m.tipo === 'salida'
                               ? '#fee2e2'
                               : '#e0f2fe',
                           color:
-                            m.tipo === 'entrada'
+                            String(m.motivo || '').toLowerCase().includes('merma')
+                              ? '#991b1b'
+                              : m.tipo === 'entrada'
                               ? '#166534'
                               : m.tipo === 'salida'
                               ? '#991b1b'
                               : '#075985',
                         }}
                       >
-                        {String(m.tipo || 'sin tipo').toUpperCase()}
+                        {String(m.motivo || '').toLowerCase().includes('merma')
+                          ? 'MERMA'
+                          : String(m.tipo || 'sin tipo').toUpperCase()}
                       </span>
                     </td>
                     <td style={styles.td}>{m.cantidad}</td>

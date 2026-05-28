@@ -61,6 +61,7 @@ use App\Http\Controllers\MedicamentoController;
 Route::get('/medicamentos', [MedicamentoController::class, 'index']);
 Route::post('/medicamentos', [MedicamentoController::class, 'store']);
 Route::post('/medicamentos/{id}/entrada', [MedicamentoController::class, 'entrada']);
+Route::post('/medicamentos/{id}/merma', [MedicamentoController::class, 'merma']);
 Route::post('/medicamentos/aplicar', [MedicamentoController::class, 'aplicar']);
 Route::get('/medicamentos/historial/{animalId}', [MedicamentoController::class, 'historial']);
 Route::get('/medicamentos/alertas', [MedicamentoController::class, 'alertas']);
@@ -81,8 +82,10 @@ use App\Http\Controllers\InventarioController;
 use App\Http\Controllers\AlimentacionController;
 
 Route::get('/inventario', [InventarioController::class, 'index']);
+Route::get('/inventario/movimientos', [InventarioController::class, 'movimientos']);
 Route::post('/inventario/entrada', [InventarioController::class, 'entrada']);
 Route::post('/inventario/salida', [InventarioController::class, 'salida']);
+Route::post('/inventario/merma', [InventarioController::class, 'merma']);
 Route::post('/inventario/consumo', [InventarioController::class, 'consumoAutomatico']);
 Route::get('/gestaciones/alertas-inteligentes', [GestacionController::class, 'alertasInteligentes']);
 Route::post('/gestaciones/partos', [GestacionController::class, 'procesarPartosAutomaticos']);

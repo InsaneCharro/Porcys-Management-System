@@ -3,7 +3,9 @@ import axios from "axios";
 
 export default function Inventario() {
   const [inventario, setInventario] = useState([]);
+  const [movimientos, setMovimientos] = useState([]);
   const [cantidad, setCantidad] = useState("");
+  const [motivoMerma, setMotivoMerma] = useState("");
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
 
   const cargarInventario = () => {
@@ -13,8 +15,20 @@ export default function Inventario() {
       .catch((err) => console.error(err));
   };
 
-  useEffect(() => {
+  const cargarMovimientos = () => {
+    axios
+      .get("http://127.0.0.1:8000/api/inventario/movimientos")
+      .then((res) => setMovimientos(res.data || []))
+      .catch((err) => console.error(err));
+  };
+
+  const recargarDatos = () => {
     cargarInventario();
+    cargarMovimientos();
+  };
+
+  useEffect(() => {
+    recargarDatos();
   }, []);
 
   const registrarEntrada = () => {
@@ -30,7 +44,7 @@ export default function Inventario() {
       .then(() => {
         alert("Entrada registrada");
         setCantidad("");
-        cargarInventario();
+        recargarDatos();
       })
       .catch((err) => {
         alert(err.response?.data?.error || "Error");
@@ -50,10 +64,48 @@ export default function Inventario() {
       .then(() => {
         alert("Salida registrada");
         setCantidad("");
-        cargarInventario();
+        recargarDatos();
       })
       .catch((err) => {
         alert(err.response?.data?.error || "Error");
+      });
+  };
+
+  const registrarMerma = () => {
+    if (!productoSeleccionado || !cantidad || !motivoMerma.trim()) {
+      return alert("Selecciona producto, cantidad y motivo de merma");
+    }
+
+    const producto = inventario.find((item) => item.id === productoSeleccionado);
+
+    const confirmar = window.confirm(
+      `Vas a registrar una merma de ${cantidad} kg para ${
+        producto?.nombre_producto || "el producto seleccionado"
+      }.\n\nMotivo: ${motivoMerma}\n\nEsta acción descontará stock y quedará registrada en movimientos. ¿Continuar?`
+    );
+
+    if (!confirmar) {
+      return;
+    }
+
+    axios
+      .post("http://127.0.0.1:8000/api/inventario/merma", {
+        producto_id: productoSeleccionado,
+        cantidad: cantidad,
+        motivo: motivoMerma,
+      })
+      .then(() => {
+        alert("Merma registrada correctamente");
+        setCantidad("");
+        setMotivoMerma("");
+        recargarDatos();
+      })
+      .catch((err) => {
+        alert(
+          err.response?.data?.error ||
+            err.response?.data?.message ||
+            "Error registrando merma"
+        );
       });
   };
 
@@ -91,7 +143,7 @@ export default function Inventario() {
           "La formulación por ingredientes se realizará en el módulo Alimentación."
       );
 
-      cargarInventario();
+      recargarDatos();
     } catch (error) {
       console.error("ERROR COMPLETO:", error.response?.data || error);
       alert("Error en consumo automático (revisa consola)");
@@ -126,6 +178,66 @@ export default function Inventario() {
 
   const productoActual = inventario.find((item) => item.id === productoSeleccionado);
   const hayStockBajo = inventario.some((item) => Number(item.stock_kg || 0) < 50);
+
+  const formatearFecha = (fecha) => {
+    if (!fecha) {
+      return "Sin fecha";
+    }
+
+    const fechaObj = new Date(fecha);
+
+    if (Number.isNaN(fechaObj.getTime())) {
+      return String(fecha);
+    }
+
+    return fechaObj.toLocaleString("es-MX", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const etiquetaMovimiento = (movimiento) => {
+    if (movimiento.tipo_origen === "merma") {
+      return "MERMA";
+    }
+
+    return String(movimiento.tipo || "sin tipo").toUpperCase();
+  };
+
+  const estiloMovimiento = (movimiento) => {
+    if (movimiento.tipo_origen === "merma") {
+      return {
+        background: "#fee2e2",
+        color: "#991b1b",
+        border: "1px solid #fecaca",
+      };
+    }
+
+    if (movimiento.tipo === "entrada") {
+      return {
+        background: "#dcfce7",
+        color: "#166534",
+        border: "1px solid #bbf7d0",
+      };
+    }
+
+    if (movimiento.tipo === "consumo") {
+      return {
+        background: "#e0f2fe",
+        color: "#075985",
+        border: "1px solid #bae6fd",
+      };
+    }
+
+    return {
+      background: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fde68a",
+    };
+  };
 
   const styles = {
     page: {
@@ -194,6 +306,16 @@ export default function Inventario() {
       fontWeight: 900,
       border: `1px solid ${visual.color}`,
       fontSize: "13px",
+    }),
+    movementBadge: (visual) => ({
+      display: "inline-block",
+      padding: "5px 9px",
+      borderRadius: "999px",
+      background: visual.background,
+      color: visual.color,
+      border: visual.border,
+      fontWeight: 900,
+      fontSize: "12px",
     }),
     button: {
       padding: "9px 12px",
@@ -323,6 +445,13 @@ export default function Inventario() {
             onChange={(e) => setCantidad(e.target.value)}
           />
 
+          <input
+            style={styles.input}
+            placeholder="Motivo de merma"
+            value={motivoMerma}
+            onChange={(e) => setMotivoMerma(e.target.value)}
+          />
+
           <button style={styles.button} onClick={registrarEntrada}>
             ➕ Entrada
           </button>
@@ -333,7 +462,79 @@ export default function Inventario() {
           >
             ➖ Salida
           </button>
+
+          <button
+            style={{ ...styles.button, background: "#9333ea" }}
+            onClick={registrarMerma}
+          >
+            🧾 Registrar merma
+          </button>
         </div>
+      </div>
+
+      <div style={styles.card}>
+        <h3 style={{ margin: "0 0 14px", color: "#0f172a", fontWeight: 900 }}>
+          Historial de movimientos de inventario
+        </h3>
+
+        <p style={{ margin: "0 0 16px", color: "#475569" }}>
+          Entradas, salidas, consumos automáticos y mermas registradas en inventario.
+          El stock mostrado corresponde al valor actual del producto, no al stock histórico
+          después de cada movimiento.
+        </p>
+
+        {movimientos.length === 0 ? (
+          <p style={{ color: "#64748b", fontWeight: 700 }}>
+            No hay movimientos registrados.
+          </p>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Fecha</th>
+                <th style={styles.th}>Producto</th>
+                <th style={styles.th}>Tipo</th>
+                <th style={styles.th}>Cantidad</th>
+                <th style={styles.th}>Stock actual del producto</th>
+                <th style={styles.th}>Descripción</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {movimientos.map((movimiento) => (
+                <tr key={movimiento.id}>
+                  <td style={styles.td}>
+                    {formatearFecha(movimiento.fecha_movimiento || movimiento.created_at)}
+                  </td>
+
+                  <td style={styles.td}>
+                    {movimiento.inventario?.nombre_producto || "Producto no encontrado"}
+                  </td>
+
+                  <td style={styles.td}>
+                    <span style={styles.movementBadge(estiloMovimiento(movimiento))}>
+                      {etiquetaMovimiento(movimiento)}
+                    </span>
+                  </td>
+
+                  <td style={styles.td}>
+                    {Number(movimiento.cantidad || 0).toFixed(2)} kg
+                  </td>
+
+                  <td style={styles.td}>
+                    {movimiento.inventario?.stock_kg !== undefined
+                      ? `${Number(movimiento.inventario.stock_kg || 0).toFixed(2)} kg`
+                      : "Sin dato"}
+                  </td>
+
+                  <td style={styles.td}>
+                    {movimiento.descripcion || movimiento.tipo_origen || "Sin descripción"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

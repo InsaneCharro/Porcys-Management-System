@@ -90,6 +90,83 @@ class InventarioController extends Controller
         });
     }
 
+    public function merma(Request $request)
+    {
+        $validated = $request->validate([
+            'producto_id' => 'required|exists:inventarios,id',
+            'cantidad' => 'required|numeric|min:0.1',
+            'motivo' => 'required|string|max:255',
+        ]);
+
+        $cantidad = round((float) $validated['cantidad'], 2);
+
+        return DB::transaction(function () use ($validated, $cantidad) {
+            $inventario = Inventario::lockForUpdate()->findOrFail($validated['producto_id']);
+
+            if ((float) $inventario->stock_kg < $cantidad) {
+                return response()->json([
+                    'error' => 'Stock insuficiente para registrar merma',
+                    'producto' => $inventario->nombre_producto,
+                    'stock_actual' => round((float) $inventario->stock_kg, 2),
+                    'cantidad_solicitada' => round($cantidad, 2),
+                ], 400);
+            }
+
+            $inventario->stock_kg = round(((float) $inventario->stock_kg) - $cantidad, 2);
+            $inventario->save();
+
+            MovimientoInventario::create([
+                'inventario_id' => $inventario->id,
+                'tipo' => 'salida',
+                'cantidad' => $cantidad,
+                'tipo_origen' => 'merma',
+                'referencia_id' => $inventario->id,
+                'descripcion' => 'Merma de inventario: ' . $validated['motivo'],
+            ]);
+
+            return response()->json([
+                'mensaje' => 'Merma de inventario registrada correctamente',
+                'producto' => $inventario->nombre_producto,
+                'cantidad' => round($cantidad, 2),
+                'stock_actual' => round((float) $inventario->stock_kg, 2),
+                'motivo' => $validated['motivo'],
+            ]);
+        });
+    }
+
+    public function movimientos()
+    {
+        $movimientos = MovimientoInventario::with('inventario')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get()
+            ->map(function ($movimiento) {
+                return [
+                    'id' => $movimiento->id,
+                    'inventario_id' => $movimiento->inventario_id,
+                    'tipo' => $movimiento->tipo,
+                    'cantidad' => round((float) $movimiento->cantidad, 2),
+                    'tipo_origen' => $movimiento->tipo_origen,
+                    'referencia_id' => $movimiento->referencia_id,
+                    'descripcion' => $movimiento->descripcion,
+                    'created_at' => $movimiento->created_at,
+                    'updated_at' => $movimiento->updated_at,
+                    'fecha_movimiento' => optional($movimiento->created_at)->format('Y-m-d H:i:s'),
+                    'inventario' => $movimiento->inventario ? [
+                        'id' => $movimiento->inventario->id,
+                        'nombre_producto' => $movimiento->inventario->nombre_producto,
+                        'tipo' => $movimiento->inventario->tipo ?? null,
+                        'unidad' => $movimiento->inventario->unidad ?? null,
+                        'stock_kg' => round((float) $movimiento->inventario->stock_kg, 2),
+                        'costo_unitario' => $movimiento->inventario->costo_unitario ?? 0,
+                    ] : null,
+                ];
+            });
+
+        return response()->json($movimientos);
+    }
+
     public function consumoAutomatico(Request $request)
     {
         $validated = $request->validate([
