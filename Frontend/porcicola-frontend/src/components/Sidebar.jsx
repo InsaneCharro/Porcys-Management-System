@@ -1,7 +1,132 @@
 import { Link } from "react-router-dom";
 import "../styles/sidebar.css";
 
-export default function Sidebar({ collapsed, setCollapsed }) {
+const ADMIN = "administrador";
+const EMPLEADO = "empleado";
+const INVERSIONISTA = "inversionista";
+
+const opcionesMenu = [
+  {
+    to: "/",
+    icono: "📊",
+    texto: "Dashboard",
+    roles: [ADMIN, EMPLEADO, INVERSIONISTA],
+  },
+  {
+    to: "/animales",
+    icono: "🐖",
+    texto: "Animales",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/pesos-pendientes",
+    icono: "⚖️",
+    texto: "Pesos pendientes",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/ventas",
+    icono: "💰",
+    texto: "Ventas",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/gestaciones",
+    icono: "🤰",
+    texto: "Gestaciones",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/maternidad",
+    icono: "🐷",
+    texto: "Maternidad",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/corrales",
+    icono: "🏠",
+    texto: "Corrales",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/inventario",
+    icono: "📦",
+    texto: "Inventario",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/alimentacion",
+    icono: "🌽",
+    texto: "Alimentación",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/medicamentos",
+    icono: "💊",
+    texto: "Medicamentos",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/sanidad",
+    icono: "🩺",
+    texto: "Sanidad",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/mortalidad-bajas",
+    icono: "☠️",
+    texto: "Mortalidad / Bajas",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/alertas",
+    icono: "🚨",
+    texto: "Alertas",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/predicciones",
+    icono: "🔮",
+    texto: "Predicciones",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/clientes",
+    icono: "👨🏻‍💼",
+    texto: "Clientes",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/reportes",
+    icono: "📑",
+    texto: "Reportes",
+    roles: [ADMIN, INVERSIONISTA],
+  },
+  {
+    to: "/finanzas",
+    icono: "💵",
+    texto: "Finanzas",
+    roles: [ADMIN, INVERSIONISTA],
+  },
+  {
+    to: "/compras",
+    icono: "🛒",
+    texto: "Compras",
+    roles: [ADMIN, EMPLEADO],
+  },
+  {
+    to: "/usuarios",
+    icono: "👥",
+    texto: "Usuarios",
+    roles: [ADMIN],
+  },
+];
+
+export default function Sidebar({ collapsed, setCollapsed, usuario, onLogout }) {
+  const opcionesVisibles = opcionesMenu.filter((opcion) =>
+    opcion.roles.includes(usuario?.role)
+  );
+
   return (
     <div className={`sidebar ${collapsed ? "collapsed" : ""}`}>
       <button
@@ -19,113 +144,60 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         )}
       </div>
 
+      {!collapsed && usuario && (
+        <div
+          style={{
+            margin: "10px 14px 16px",
+            padding: "12px",
+            borderRadius: "12px",
+            background: "rgba(255,255,255,0.10)",
+            color: "#ffffff",
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: "14px" }}>
+            {usuario.name}
+          </div>
+
+          <div
+            style={{
+              fontSize: "12px",
+              opacity: 0.85,
+              marginTop: "4px",
+              textTransform: "capitalize",
+            }}
+          >
+            Rol: {usuario.role}
+          </div>
+        </div>
+      )}
+
       <ul>
-        <li>
-          <Link to="/">
-            {collapsed ? "📊" : "📊 Dashboard"}
-          </Link>
-        </li>
+        {opcionesVisibles.map((opcion) => (
+          <li key={opcion.to}>
+            <Link to={opcion.to}>
+              {collapsed ? opcion.icono : `${opcion.icono} ${opcion.texto}`}
+            </Link>
+          </li>
+        ))}
 
         <li>
-          <Link to="/animales">
-            {collapsed ? "🐖" : "🐖 Animales"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/pesos-pendientes">
-            {collapsed ? "⚖️" : "⚖️ Pesos pendientes"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/ventas">
-            {collapsed ? "💰" : "💰 Ventas"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/gestaciones">
-            {collapsed ? "🤰" : "🤰 Gestaciones"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/maternidad">
-            {collapsed ? "🐷" : "🐷 Maternidad"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/corrales">
-            {collapsed ? "🏠" : "🏠 Corrales"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/inventario">
-            {collapsed ? "📦" : "📦 Inventario"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/alimentacion">
-            {collapsed ? "🌽" : "🌽 Alimentación"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/medicamentos">
-            {collapsed ? "💊" : "💊 Medicamentos"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/sanidad">
-            {collapsed ? "🩺" : "🩺 Sanidad"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/mortalidad-bajas">
-            {collapsed ? "☠️" : "☠️ Mortalidad / Bajas"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/alertas">
-            {collapsed ? "🚨" : "🚨 Alertas"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/predicciones">
-            {collapsed ? "🔮" : "🔮 Predicciones"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/clientes">
-            {collapsed ? "👨🏻‍💼" : "👨🏻‍💼 Clientes"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/reportes">
-            {collapsed ? "📑" : "📑 Reportes"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/finanzas">
-            {collapsed ? "💵" : "💵 Finanzas"}
-          </Link>
-        </li>
-
-        <li>
-          <Link to="/compras">
-            {collapsed ? "🛒" : "🛒 Compras"}
-          </Link>
+          <button
+            type="button"
+            onClick={onLogout}
+            style={{
+              width: "100%",
+              border: "none",
+              background: "transparent",
+              color: "#ffffff",
+              textAlign: "left",
+              padding: "12px 18px",
+              cursor: "pointer",
+              fontSize: "15px",
+              fontWeight: 700,
+            }}
+          >
+            {collapsed ? "🚪" : "🚪 Cerrar sesión"}
+          </button>
         </li>
       </ul>
     </div>

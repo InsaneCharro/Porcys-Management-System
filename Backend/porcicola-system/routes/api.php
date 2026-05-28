@@ -145,6 +145,18 @@ Route::get('/dashboard/pesos-evolucion', [DashboardController::class, 'pesosEvol
 
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\FinanzasController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\UserController;
+
+Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/auth/logout', [AuthController::class, 'logout']);
+Route::get('/auth/roles', [AuthController::class, 'roles']);
+
+Route::get('/usuarios', [UserController::class, 'index']);
+Route::post('/usuarios', [UserController::class, 'store']);
+Route::put('/usuarios/{user}', [UserController::class, 'update']);
+Route::delete('/usuarios/{user}', [UserController::class, 'destroy']);
+
 Route::get('/reportes/ventas', [ReporteController::class, 'ventas']);
 Route::get('/reportes/inventario', [ReporteController::class, 'inventario']);
 Route::get('/reportes/muertes', [ReporteController::class, 'muertes']);
