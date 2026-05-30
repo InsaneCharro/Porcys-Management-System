@@ -30,16 +30,24 @@ export default function Medicamentos() {
     motivo: '',
   });
 
+  const fechaHoy = new Date().toISOString().split('T')[0];
+
   const [aplicacionForm, setAplicacionForm] = useState({
     animal_id: '',
     medicamento_id: '',
     dosis: '',
-    fecha: '',
+    fecha: fechaHoy,
   });
 
   useEffect(() => {
     cargarDatos();
   }, []);
+
+  useEffect(() => {
+    if (tab === 'movimientos') {
+      cargarDatos();
+    }
+  }, [tab]);
 
   const cargarDatos = async () => {
     setLoading(true);
@@ -168,7 +176,7 @@ export default function Medicamentos() {
         animal_id: '',
         medicamento_id: '',
         dosis: '',
-        fecha: '',
+        fecha: fechaHoy,
       });
 
       cargarDatos();
@@ -617,11 +625,27 @@ export default function Medicamentos() {
 
       {tab === 'movimientos' && (
         <div style={styles.card}>
-          <h2>Movimientos de medicamentos</h2>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div>
+              <h2>Movimientos de medicamentos</h2>
 
-          <p style={{ color: '#64748b', marginTop: 0 }}>
-            Trazabilidad de entradas, salidas y ajustes registrados en el inventario de medicamentos.
-          </p>
+              <p style={{ color: '#64748b', marginTop: 0 }}>
+                Trazabilidad de entradas, salidas y ajustes registrados en el inventario de medicamentos.
+              </p>
+            </div>
+
+            <button style={styles.button} onClick={cargarDatos}>
+              Actualizar movimientos
+            </button>
+          </div>
 
           {movimientos.length === 0 ? (
             <div

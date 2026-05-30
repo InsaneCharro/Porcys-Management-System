@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
 const API = 'http://127.0.0.1:8000/api';
-
+const fechaHoy = new Date().toISOString().split('T')[0];
 export default function EventosSanitarios() {
   const [tab, setTab] = useState('aplicar');
   const [animales, setAnimales] = useState([]);
@@ -13,12 +13,14 @@ export default function EventosSanitarios() {
   const [resumenPendientesLechones, setResumenPendientesLechones] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  const fechaHoy = new Date().toISOString().split('T')[0];
+
   const [eventoForm, setEventoForm] = useState({
     animal_id: '',
     tipo: 'vacuna',
     medicamento_id: '',
     dosis: '',
-    fecha: '',
+    fecha: fechaHoy,
     observaciones: '',
   });
 
@@ -72,11 +74,13 @@ export default function EventosSanitarios() {
         tipo: 'vacuna',
         medicamento_id: '',
         dosis: '',
-        fecha: '',
+        fecha: fechaHoy,
         observaciones: '',
       });
 
-      cargarDatos();
+      await cargarDatos();
+      setTab('historial');
+
       alert('Evento sanitario registrado correctamente');
     } catch (error) {
       console.error(error);
@@ -89,27 +93,6 @@ export default function EventosSanitarios() {
     }
   };
 
-  const aplicarRapido = (tipoEvento, nombreMedicamento, dosisDefault) => {
-    const medicamentoEncontrado = medicamentos.find(
-      (m) => m.nombre.toLowerCase() === nombreMedicamento.toLowerCase()
-    );
-
-    if (!medicamentoEncontrado) {
-      alert(`Medicamento "${nombreMedicamento}" no encontrado`);
-      return;
-    }
-
-    setTab('aplicar');
-
-    setEventoForm({
-      ...eventoForm,
-      tipo: tipoEvento,
-      medicamento_id: medicamentoEncontrado.id,
-      dosis: dosisDefault,
-      fecha: new Date().toISOString().split('T')[0],
-      observaciones: `Aplicación rápida: ${nombreMedicamento}`,
-    });
-  };
 
   const prepararHierroObligatorio = (control) => {
     const medicamentosHierroDisponibles = medicamentos.filter((med) => {
@@ -161,6 +144,50 @@ export default function EventosSanitarios() {
       dosis: '1',
       fecha: new Date().toISOString().split('T')[0],
       observaciones: `Hierro obligatorio día 3. Estado previo: ${control.estado}. Edad: ${control.edad_dias} días. Stock previo: ${medicamentoHierro.stock}.`,
+    });
+  };
+
+  const obtenerMedicamentoTratamiento = () => {
+    const medicamentosConStock = medicamentos.filter(
+      (medicamento) => Number(medicamento.stock || 0) > 0
+    );
+
+    const medicamentoPreferido = medicamentosConStock.find((medicamento) => {
+      const nombre = String(medicamento.nombre || '').toLowerCase();
+
+      return (
+        nombre.includes('antibi') ||
+        nombre.includes('desparasit') ||
+        nombre.includes('tratamiento') ||
+        nombre.includes('iverm') ||
+        nombre.includes('general')
+      );
+    });
+
+    return medicamentoPreferido || medicamentosConStock[0];
+  };
+
+  const prepararTratamientoEnfermeria = (animal) => {
+    const medicamentoTratamiento = obtenerMedicamentoTratamiento();
+
+    if (!medicamentoTratamiento) {
+      alert(
+        'No hay medicamentos con stock disponible. Primero registra una entrada en Medicamentos.'
+      );
+      return;
+    }
+
+    setTab('aplicar');
+
+    setEventoForm({
+      animal_id: animal.id,
+      tipo: 'tratamiento',
+      medicamento_id: medicamentoTratamiento.id,
+      dosis: '1',
+      fecha: fechaHoy,
+      observaciones:
+        `Animal en corral de enfermería. Requiere revisión sanitaria y tratamiento. ` +
+        `Etapa previa registrada: ${animal.etapa_actual || 'sin etapa'}.`,
     });
   };
 
@@ -238,6 +265,30 @@ export default function EventosSanitarios() {
     (control) =>
       control.estado === 'pendiente_en_ventana' ||
       control.estado === 'pendiente_atrasado'
+  );
+
+  const controlesHierroVisibles = pendientesLechones.filter(
+    (control) => control.estado !== 'registrado'
+  );
+
+  const animalesEnfermeria = animales.filter((animal) => {
+    return (
+      animal.estado === 'activo' &&
+      String(animal.etapa_actual || '').toLowerCase() === 'enfermeria'
+    );
+  });
+
+  const tieneTratamientoRegistrado = (animalId) => {
+    return eventos.some((evento) => {
+      return (
+        Number(evento.animal_id) === Number(animalId) &&
+        String(evento.tipo || '').toLowerCase() === 'tratamiento'
+      );
+    });
+  };
+
+  const animalesEnfermeriaPendientes = animalesEnfermeria.filter(
+    (animal) => !tieneTratamientoRegistrado(animal.id)
   );
 
   const estadoStockHierro = (() => {
@@ -381,15 +432,6 @@ export default function EventosSanitarios() {
       cursor: 'pointer',
       fontWeight: '600',
     },
-    quickButton: {
-      padding: '12px 18px',
-      borderRadius: '10px',
-      border: 'none',
-      backgroundColor: '#0ea5e9',
-      color: '#fff',
-      cursor: 'pointer',
-      fontWeight: '600',
-    },
     table: {
       width: '100%',
       borderCollapse: 'collapse',
@@ -459,7 +501,7 @@ export default function EventosSanitarios() {
       <h1 style={styles.title}>Eventos Sanitarios</h1>
 
       <div style={styles.tabs}>
-                {['protocolos', 'obligatorios', 'aplicar', 'historial', 'alertas'].map((t) => (
+                {['obligatorios', 'aplicar', 'historial', 'alertas'].map((t) => (
           <button
             key={t}
             style={styles.tabButton(tab === t)}
@@ -472,54 +514,13 @@ export default function EventosSanitarios() {
 
       {loading && <p>Cargando...</p>}
 
-      {tab === 'protocolos' && (
-        <div style={styles.card}>
-          <h2 style={styles.sectionTitle}>Protocolos rápidos</h2>
-
-          <div
-            style={{
-              display: 'flex',
-              gap: '10px',
-              flexWrap: 'wrap',
-            }}
-          >
-            <button
-              style={styles.quickButton}
-              onClick={() =>
-                aplicarRapido('tratamiento', 'Hierro dextrán', '1')
-              }
-            >
-              Hierro Dextran
-            </button>
-
-            <button
-              style={styles.quickButton}
-              onClick={() =>
-                aplicarRapido('vacuna', 'Hierro', '1')
-              }
-            >
-              Vacuna básica
-            </button>
-
-            <button
-              style={styles.quickButton}
-              onClick={() =>
-                aplicarRapido('tratamiento', 'Hierro dextrán', '2')
-              }
-            >
-              Tratamiento general
-            </button>
-          </div>
-        </div>
-      )}
 
       {tab === 'obligatorios' && (
         <div style={styles.card}>
-          <h2 style={styles.sectionTitle}>Alertas sanitarias obligatorias de lechones</h2>
+          <h2 style={styles.sectionTitle}>Controles sanitarios obligatorios</h2>
 
           <p style={{ color: '#475569', marginTop: '-10px', marginBottom: '22px' }}>
-            Control operativo de hierro obligatorio alrededor del día 3 de vida.
-            Ventana sugerida: día 2 a día 4.
+            Control operativo de hierro obligatorio en lechones y seguimiento de animales enviados a enfermería.
           </p>
 
           <div
@@ -606,13 +607,21 @@ export default function EventosSanitarios() {
               </div>
               <small>Ya tienen hierro detectado.</small>
             </div>
+
+            <div style={styles.resumenBox}>
+              <span>Enfermería</span>
+              <div style={styles.resumenNumero}>
+                {animalesEnfermeriaPendientes.length}
+              </div>
+              <small>Animales en enfermería pendientes de tratamiento.</small>
+            </div>
           </div>
 
-          {pendientesLechones.length === 0 && (
-            <p>No hay lechones activos para revisar.</p>
+          {controlesHierroVisibles.length === 0 && (
+            <p>No hay controles de hierro pendientes por revisar.</p>
           )}
 
-          {pendientesLechones.length > 0 && (
+          {controlesHierroVisibles.length > 0 && (
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -626,7 +635,7 @@ export default function EventosSanitarios() {
               </thead>
 
               <tbody>
-                {pendientesLechones.map((control) => (
+                {controlesHierroVisibles.map((control) => (
                   <tr key={`${control.animal_id}-${control.evento_obligatorio}`}>
                     <td style={styles.td}>
                       <strong>{control.identificador_unico || `ID ${control.animal_id}`}</strong>
@@ -718,7 +727,89 @@ export default function EventosSanitarios() {
                 ))}
               </tbody>
             </table>
+
           )}
+          <div style={{ marginTop: '32px' }}>
+  <h3 style={{ marginBottom: '8px', color: '#0f172a' }}>
+    Animales en enfermería
+  </h3>
+
+  <p style={{ color: '#475569', marginTop: 0 }}>
+    Animales activos enviados a enfermería para revisión sanitaria.
+    Desde aquí puedes preparar el tratamiento sin buscarlos manualmente.
+  </p>
+
+  {animalesEnfermeriaPendientes.length === 0 ? (
+    <p>No hay animales de enfermería pendientes de tratamiento.</p>
+  ) : (
+    <table style={styles.table}>
+      <thead>
+        <tr>
+          <th style={styles.th}>Animal</th>
+          <th style={styles.th}>Sexo</th>
+          <th style={styles.th}>Etapa</th>
+          <th style={styles.th}>Estado sanitario</th>
+          <th style={styles.th}>Acción</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {animalesEnfermeriaPendientes.map((animal) => {
+          const yaTieneTratamiento = tieneTratamientoRegistrado(animal.id);
+
+          return (
+            <tr key={`enfermeria-${animal.id}`}>
+              <td style={styles.td}>
+                <strong>
+                  {animal.identificador_unico || `Animal #${animal.id}`}
+                </strong>
+                <br />
+                <small>ID interno: {animal.id}</small>
+              </td>
+
+              <td style={styles.td}>
+                {animal.sexo || 'Sin sexo'}
+              </td>
+
+              <td style={styles.td}>
+                {animal.etapa_actual || 'Sin etapa'}
+              </td>
+
+              <td style={styles.td}>
+                <span
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '999px',
+                    fontWeight: 800,
+                    fontSize: '12px',
+                    backgroundColor: yaTieneTratamiento ? '#dcfce7' : '#fee2e2',
+                    color: yaTieneTratamiento ? '#166534' : '#991b1b',
+                    border: yaTieneTratamiento
+                      ? '1px solid #bbf7d0'
+                      : '1px solid #fecaca',
+                  }}
+                >
+                  {yaTieneTratamiento
+                    ? 'Tratamiento registrado'
+                    : 'Pendiente de tratamiento'}
+                </span>
+              </td>
+
+              <td style={styles.td}>
+                <button
+                  style={styles.smallButton}
+                  onClick={() => prepararTratamientoEnfermeria(animal)}
+                >
+                  Preparar tratamiento
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  )}
+</div>
         </div>
       )}
 

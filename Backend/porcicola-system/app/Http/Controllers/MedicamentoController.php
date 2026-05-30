@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+
 use App\Models\Medicamento;
 use App\Models\AplicacionMedica;
 use App\Models\MovimientoMedicamento;
+use App\Models\Animal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -160,6 +162,8 @@ class MedicamentoController extends Controller
 
         try {
             DB::transaction(function () use ($request) {
+                $animal = Animal::findOrFail($request->animal_id);
+
                 $medicamento = Medicamento::where('id', $request->medicamento_id)
                     ->lockForUpdate()
                     ->firstOrFail();
@@ -181,7 +185,8 @@ class MedicamentoController extends Controller
                     'medicamento_id' => $medicamento->id,
                     'tipo' => 'salida',
                     'cantidad' => 1,
-                    'motivo' => 'Aplicación a animal #' . $request->animal_id,
+                    'motivo' => 'Aplicación a ' . ($animal->identificador_unico ?? 'animal #' . $animal->id) .
+                        ' | Dosis: ' . $request->dosis,
                     'usuario' => 'Usuario',
                 ]);
             });

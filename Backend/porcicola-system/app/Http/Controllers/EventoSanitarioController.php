@@ -19,6 +19,7 @@ class EventoSanitarioController extends Controller
             'medicamento'
         ])
         ->orderByDesc('fecha')
+        ->orderByDesc('id')
         ->get();
     }
 
@@ -33,57 +34,57 @@ class EventoSanitarioController extends Controller
             'observaciones' => 'nullable|string'
         ]);
 
-        DB::beginTransaction();
-
         try {
-            $animal = Animal::findOrFail($request->animal_id);
+            $evento = DB::transaction(function () use ($request) {
+                $animal = Animal::findOrFail($request->animal_id);
 
-            $medicamento = Medicamento::findOrFail($request->medicamento_id);
+                $medicamento = Medicamento::where('id', $request->medicamento_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            if ($medicamento->stock < 1) {
-                return response()->json([
-                    'message' => 'Stock insuficiente'
-                ], 422);
-            }
+                if ((int) ($medicamento->stock ?? 0) <= 0) {
+                    throw new \RuntimeException(
+                        'Stock insuficiente para registrar el evento sanitario. Registra una entrada del medicamento antes de aplicarlo.'
+                    );
+                }
 
-            $evento = EventoSanitario::create([
-                'animal_id' => $request->animal_id,
-                'tipo' => $request->tipo,
-                'medicamento_id' => $request->medicamento_id,
-                'dosis' => $request->dosis,
-                'fecha' => $request->fecha,
-                'observaciones' => $request->observaciones
-            ]);
+                $evento = EventoSanitario::create([
+                    'animal_id' => $animal->id,
+                    'tipo' => $request->tipo,
+                    'medicamento_id' => $medicamento->id,
+                    'dosis' => $request->dosis,
+                    'fecha' => $request->fecha,
+                    'observaciones' => $request->observaciones
+                ]);
 
-            AplicacionMedica::create([
-                'animal_id' => $animal->id,
-                'medicamento' => $medicamento->nombre,
-                'dosis' => $request->dosis,
-                'fecha' => $request->fecha
-            ]);
+                $medicamento->decrement('stock', 1);
 
-            $medicamento->stock -= 1;
-            $medicamento->save();
+                MovimientoMedicamento::create([
+                    'medicamento_id' => $medicamento->id,
+                    'tipo' => 'salida',
+                    'cantidad' => 1,
+                    'motivo' => 'Evento sanitario: ' . $request->tipo .
+                        ' aplicado a ' . ($animal->identificador_unico ?? 'animal #' . $animal->id) .
+                        ' | Dosis: ' . $request->dosis,
+                    'usuario' => 'Sistema'
+                ]);
 
-            MovimientoMedicamento::create([
-                'medicamento_id' => $medicamento->id,
-                'tipo' => 'salida',
-                'cantidad' => 1,
-                'motivo' => 'Evento sanitario: ' . $request->tipo,
-                'usuario' => 'Sistema'
-            ]);
-
-            DB::commit();
+                return $evento->load(['animal', 'medicamento']);
+            });
 
             return response()->json([
                 'success' => true,
+                'message' => 'Evento sanitario registrado correctamente',
                 'evento' => $evento
             ]);
 
-        } catch (\Throwable $e) {
-            DB::rollBack();
-
+        } catch (\RuntimeException $e) {
             return response()->json([
+                'message' => $e->getMessage()
+            ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Error registrando evento sanitario',
                 'error' => $e->getMessage(),
                 'line' => $e->getLine()
             ], 500);
@@ -95,6 +96,7 @@ class EventoSanitarioController extends Controller
         return EventoSanitario::with('medicamento')
             ->where('animal_id', $animalId)
             ->orderByDesc('fecha')
+            ->orderByDesc('id')
             ->get();
     }
 
