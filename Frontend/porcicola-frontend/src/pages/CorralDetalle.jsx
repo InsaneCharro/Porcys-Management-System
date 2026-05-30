@@ -99,11 +99,26 @@ export default function CorralDetalle() {
     };
   };
 
+  const corralBloqueaEntradas = (corralDestino) => {
+    return (
+      ["saturado", "sobrecupo"].includes(corralDestino.estado_ocupacion) ||
+      Number(corralDestino.disponibles || 0) <= 0
+    );
+  };
+
   const moverAnimal = async (animalId) => {
     const corralDestinoId = destinos[animalId];
 
     if (!corralDestinoId) {
       alert("Selecciona un corral destino.");
+      return;
+    }
+    const corralDestino = corrales.find(
+      (c) => Number(c.id) === Number(corralDestinoId)
+    );
+
+    if (!corralDestino || corralBloqueaEntradas(corralDestino)) {
+      alert("El corral destino está lleno o en sobrecupo. Solo se permiten salidas.");
       return;
     }
 
@@ -410,6 +425,7 @@ export default function CorralDetalle() {
 
                       {corrales
                         .filter((c) => Number(c.id) !== Number(corral.id))
+                        .filter((c) => !corralBloqueaEntradas(c))
                         .map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.nombre} — {etiquetaTipoCorral(c.tipo_corral)} (

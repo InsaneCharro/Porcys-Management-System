@@ -683,6 +683,38 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className="section">
+        <h2>🚨 Alertas generales</h2>
+
+        <div className="alerts-grid">
+          <div className="alert-box parto-alert">
+            <h3>Críticas</h3>
+            <h1>{formatNumber(alertasGenerales.criticas)}</h1>
+            <p>Riesgo operativo que requiere atención inmediata.</p>
+          </div>
+
+          <div className="alert-box medicamento-alert">
+            <h3>Importantes</h3>
+            <h1>{formatNumber(alertasGenerales.importantes)}</h1>
+            <p>Situaciones que deben revisarse durante la operación.</p>
+          </div>
+
+          <div className="alert-box destete-alert">
+            <h3>Informativas</h3>
+            <h1>{formatNumber(alertasGenerales.informativas)}</h1>
+            <p>Recordatorios y eventos próximos.</p>
+          </div>
+        </div>
+
+        <div style={{ marginTop: "18px" }}>
+          {alertas.length > 0 ? (
+            alertas.map((alerta, index) => <AlertItem key={`${alerta?.tipo || "a"}-${index}`} alerta={alerta} index={index} />)
+          ) : (
+            <EmptyState text="No hay alertas generales activas." />
+          )}
+        </div>
+      </div>
+
       <div className="cards">
         <KpiCard
           icon="🐖"
@@ -978,37 +1010,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="section">
-        <h2>🚨 Alertas generales</h2>
 
-        <div className="alerts-grid">
-          <div className="alert-box parto-alert">
-            <h3>Críticas</h3>
-            <h1>{formatNumber(alertasGenerales.criticas)}</h1>
-            <p>Riesgo operativo que requiere atención inmediata.</p>
-          </div>
-
-          <div className="alert-box medicamento-alert">
-            <h3>Importantes</h3>
-            <h1>{formatNumber(alertasGenerales.importantes)}</h1>
-            <p>Situaciones que deben revisarse durante la operación.</p>
-          </div>
-
-          <div className="alert-box destete-alert">
-            <h3>Informativas</h3>
-            <h1>{formatNumber(alertasGenerales.informativas)}</h1>
-            <p>Recordatorios y eventos próximos.</p>
-          </div>
-        </div>
-
-        <div style={{ marginTop: "18px" }}>
-          {alertas.length > 0 ? (
-            alertas.map((alerta, index) => <AlertItem key={`${alerta?.tipo || "a"}-${index}`} alerta={alerta} index={index} />)
-          ) : (
-            <EmptyState text="No hay alertas generales activas." />
-          )}
-        </div>
-      </div>
 
       <div className="section">
         <h2>🐖 Animales</h2>

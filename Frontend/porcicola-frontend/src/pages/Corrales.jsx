@@ -189,12 +189,30 @@ export default function Corrales() {
     });
   };
 
+  const corralBloqueaEntradas = (corral) => {
+    return (
+      ["saturado", "sobrecupo"].includes(corral.estado_ocupacion) ||
+      Number(corral.disponibles || 0) <= 0
+    );
+  };
+
   const moverAnimal = async (corralDestino) => {
     if (!draggedAnimal) {
       return;
     }
 
     if (Number(draggedAnimal.corral_origen_id) === Number(corralDestino.id)) {
+      setDraggedAnimal(null);
+      setCorralHover(null);
+      return;
+    }
+
+    if (corralBloqueaEntradas(corralDestino)) {
+      alert(
+        `El corral ${corralDestino.nombre} está lleno o en sobrecupo. ` +
+          "Solo se permiten salidas, no nuevas entradas."
+      );
+
       setDraggedAnimal(null);
       setCorralHover(null);
       return;
@@ -452,11 +470,20 @@ export default function Corrales() {
                   <div
                     key={corral.id}
                     onDragOver={(e) => {
+                      if (corralBloqueaEntradas(corral)) {
+                        setCorralHover(null);
+                        return;
+                      }
+
                       e.preventDefault();
                       setCorralHover(corral.id);
                     }}
                     onDragLeave={() => setCorralHover(null)}
-                    onDrop={() => moverAnimal(corral)}
+                    onDrop={() => {
+                      if (!corralBloqueaEntradas(corral)) {
+                        moverAnimal(corral);
+                      }
+                    }}
                     style={{
                       ...styles.card,
                       border:
@@ -536,6 +563,12 @@ export default function Corrales() {
                       <p style={{ color: "#475569", marginTop: "8px" }}>
                         Disponibles: <strong>{corral.disponibles}</strong>
                       </p>
+
+                      {corralBloqueaEntradas(corral) && (
+                        <p style={{ color: "#991b1b", marginTop: "6px", fontWeight: 900 }}>
+                          Entradas bloqueadas: solo se permiten salidas.
+                        </p>
+                      )}
 
                       {Number(corral.excedente || 0) > 0 && (
                         <p style={{ color: "#991b1b", marginTop: "6px", fontWeight: 900 }}>

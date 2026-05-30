@@ -134,12 +134,7 @@ export default function AnimalesTable() {
   const etiquetaAnimal = (animal) => {
     if (!animal) return "Sin registro";
 
-    const identificador = animal.identificador_unico || `Animal #${animal.id}`;
-    const sexo = animal.sexo || "sin sexo";
-    const etapa = animal.etapa_actual || "sin etapa";
-    const estado = animal.estado || "sin estado";
-
-    return `${identificador} · ${sexo} · ${etapa} · ${estado}`;
+    return animal.identificador_unico || `Animal #${animal.id}`;
   };
 
   const obtenerAnimalPorId = (id) => {
@@ -230,6 +225,35 @@ export default function AnimalesTable() {
       outline: "none",
       fontSize: "14px",
     },
+    tableInput: {
+      width: "100%",
+      minWidth: "0",
+      maxWidth: "100%",
+      boxSizing: "border-box",
+      padding: "8px 8px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "10px",
+      background: "#ffffff",
+      color: "#0f172a",
+      outline: "none",
+      fontSize: "13px",
+    },
+    actionsTd: {
+      padding: "10px 8px",
+      color: "#475569",
+      borderBottom: "1px solid #e2e8f0",
+      fontWeight: 700,
+      fontSize: "13px",
+      verticalAlign: "middle",
+      whiteSpace: "normal",
+      overflow: "visible",
+    },
+    actionsWrap: {
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px",
+      alignItems: "stretch",
+    },
     button: {
       padding: "9px 12px",
       border: "none",
@@ -258,33 +282,40 @@ export default function AnimalesTable() {
       cursor: "pointer",
     },
     tableWrap: {
-      overflowX: "auto",
+      overflowX: "hidden",
       borderRadius: "16px",
       border: "1px solid #e2e8f0",
+      width: "100%",
     },
     table: {
       width: "100%",
       borderCollapse: "collapse",
       background: "#ffffff",
       color: "#0f172a",
-      minWidth: "1120px",
+      tableLayout: "fixed",
     },
     th: {
       background: "#e2e8f0",
       color: "#0f172a",
-      padding: "14px",
+      padding: "10px 8px",
       textAlign: "left",
       fontWeight: 900,
       borderBottom: "1px solid #cbd5e1",
-      fontSize: "14px",
+      fontSize: "13px",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
     },
     td: {
-      padding: "14px",
+      padding: "10px 8px",
       color: "#475569",
       borderBottom: "1px solid #e2e8f0",
       fontWeight: 700,
-      fontSize: "14px",
+      fontSize: "13px",
       verticalAlign: "middle",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
     },
     badge: (visual) => ({
       display: "inline-block",
@@ -314,7 +345,7 @@ export default function AnimalesTable() {
           style={styles.input}
           type="text"
           name="identificador"
-          placeholder="Buscar ID..."
+          placeholder="Buscar identificador..."
           value={filtros.identificador}
           onChange={handleFiltro}
         />
@@ -377,7 +408,6 @@ export default function AnimalesTable() {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>ID</th>
                 <th style={styles.th}>Identificador</th>
                 <th style={styles.th}>Sexo</th>
                 <th style={styles.th}>Etapa</th>
@@ -391,7 +421,7 @@ export default function AnimalesTable() {
             <tbody>
               {animales.length === 0 ? (
                 <tr>
-                  <td style={styles.td} colSpan="8">
+                  <td style={styles.td} colSpan="7">
                     No hay animales con los filtros seleccionados.
                   </td>
                 </tr>
@@ -408,8 +438,6 @@ export default function AnimalesTable() {
                         background: editandoId === animal.id ? "#eff6ff" : "#ffffff",
                       }}
                     >
-                      <td style={styles.td}>{animal.id}</td>
-
                       <td style={{ ...styles.td, color: "#0f172a", fontWeight: 900 }}>
                         {animal.identificador_unico || "N/A"}
                       </td>
@@ -417,78 +445,28 @@ export default function AnimalesTable() {
                       <td style={styles.td} onClick={(e) => e.stopPropagation()}>
                         {editandoId === animal.id ? (
                           <select
-                            style={styles.input}
-                            value={formEdit.estado}
+                            style={styles.tableInput}
+                            value={formEdit.sexo}
                             onChange={(e) =>
                               setFormEdit({
                                 ...formEdit,
-                                estado: e.target.value,
+                                sexo: e.target.value,
                               })
                             }
                           >
-                            <option value="activo">Activo</option>
-                            <option value="vendido">Vendido</option>
-                            <option value="muerto">Muerto</option>
-                            <option value="descartado">Descartado</option>
-                            <option value="baja">Baja</option>
+                            <option value="">Sexo</option>
+                            <option value="macho">Macho</option>
+                            <option value="hembra">Hembra</option>
                           </select>
                         ) : (
-                          <span style={styles.badge(visual)}>{visual.label}</span>
+                          animal.sexo || "N/A"
                         )}
                       </td>
 
                       <td style={styles.td} onClick={(e) => e.stopPropagation()}>
                         {editandoId === animal.id ? (
                           <select
-                            style={styles.input}
-                            value={formEdit.madre_id}
-                            onChange={(e) =>
-                              setFormEdit({
-                                ...formEdit,
-                                madre_id: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">Sin madre</option>
-                            {madresDisponibles(animal.id).map((madre) => (
-                              <option key={madre.id} value={madre.id}>
-                                {etiquetaAnimal(madre)}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          etiquetaAnimal(obtenerAnimalPorId(animal.madre_id))
-                        )}
-                      </td>
-
-                      <td style={styles.td} onClick={(e) => e.stopPropagation()}>
-                        {editandoId === animal.id ? (
-                          <select
-                            style={styles.input}
-                            value={formEdit.padre_id}
-                            onChange={(e) =>
-                              setFormEdit({
-                                ...formEdit,
-                                padre_id: e.target.value,
-                              })
-                            }
-                          >
-                            <option value="">Sin padre</option>
-                            {padresDisponibles(animal.id).map((padre) => (
-                              <option key={padre.id} value={padre.id}>
-                                {etiquetaAnimal(padre)}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          etiquetaAnimal(obtenerAnimalPorId(animal.padre_id))
-                        )}
-                      </td>
-
-                      <td style={styles.td} onClick={(e) => e.stopPropagation()}>
-                        {editandoId === animal.id ? (
-                          <select
-                            style={styles.input}
+                            style={styles.tableInput}
                             value={formEdit.etapa_actual}
                             onChange={(e) =>
                               setFormEdit({
@@ -515,7 +493,7 @@ export default function AnimalesTable() {
                       <td style={styles.td} onClick={(e) => e.stopPropagation()}>
                         {editandoId === animal.id ? (
                           <select
-                            style={styles.input}
+                            style={styles.tableInput}
                             value={formEdit.estado}
                             onChange={(e) =>
                               setFormEdit({
@@ -536,7 +514,55 @@ export default function AnimalesTable() {
                       </td>
 
                       <td style={styles.td} onClick={(e) => e.stopPropagation()}>
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        {editandoId === animal.id ? (
+                          <select
+                            style={styles.tableInput}
+                            value={formEdit.madre_id}
+                            onChange={(e) =>
+                              setFormEdit({
+                                ...formEdit,
+                                madre_id: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Sin madre</option>
+                            {madresDisponibles(animal.id).map((madre) => (
+                              <option key={madre.id} value={madre.id}>
+                                {etiquetaAnimal(madre)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          etiquetaAnimal(obtenerAnimalPorId(animal.madre_id))
+                        )}
+                      </td>
+
+                      <td style={styles.td} onClick={(e) => e.stopPropagation()}>
+                        {editandoId === animal.id ? (
+                          <select
+                            style={styles.tableInput}
+                            value={formEdit.padre_id}
+                            onChange={(e) =>
+                              setFormEdit({
+                                ...formEdit,
+                                padre_id: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Sin padre</option>
+                            {padresDisponibles(animal.id).map((padre) => (
+                              <option key={padre.id} value={padre.id}>
+                                {etiquetaAnimal(padre)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          etiquetaAnimal(obtenerAnimalPorId(animal.padre_id))
+                        )}
+                      </td>
+
+                      <td style={styles.actionsTd} onClick={(e) => e.stopPropagation()}>
+                        <div style={styles.actionsWrap}>
                           {editandoId === animal.id ? (
                             <>
                               <button

@@ -7,6 +7,10 @@ export default function Inventario() {
   const [cantidad, setCantidad] = useState("");
   const [motivoMerma, setMotivoMerma] = useState("");
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+  const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [filtroTipoMovimiento, setFiltroTipoMovimiento] = useState("todos");
+  const [filtroProductoHistorial, setFiltroProductoHistorial] = useState("todos");
+  const [limiteHistorial, setLimiteHistorial] = useState(10);
 
   const cargarInventario = () => {
     axios
@@ -239,6 +243,28 @@ export default function Inventario() {
     };
   };
 
+  const movimientosFiltrados = movimientos
+    .filter((movimiento) => {
+      if (filtroTipoMovimiento === "todos") {
+        return true;
+      }
+
+      return etiquetaMovimiento(movimiento).toLowerCase() === filtroTipoMovimiento;
+    })
+    .filter((movimiento) => {
+      if (filtroProductoHistorial === "todos") {
+        return true;
+      }
+
+      const productoId =
+        movimiento.inventario_id ||
+        movimiento.producto_id ||
+        movimiento.inventario?.id;
+
+      return Number(productoId) === Number(filtroProductoHistorial);
+    })
+    .slice(0, Number(limiteHistorial));
+
   const styles = {
     page: {
       minHeight: "100vh",
@@ -421,119 +447,140 @@ export default function Inventario() {
       </div>
 
       <div style={styles.card}>
-        <h3 style={{ margin: "0 0 14px", color: "#0f172a", fontWeight: 900 }}>
-          Movimiento de inventario
-        </h3>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: "12px",
+            flexWrap: "wrap",
+            marginBottom: "14px",
+          }}
+        >
+          <div>
+            <h3 style={{ margin: "0 0 8px", color: "#0f172a", fontWeight: 900 }}>
+              Historial de movimientos de inventario
+            </h3>
 
-        <p style={{ margin: "0 0 16px", color: "#475569" }}>
-          Producto seleccionado:{" "}
-          <strong style={{ color: "#0f172a" }}>
-            {productoActual?.nombre_producto || "Ninguno"}
-          </strong>
-        </p>
-
-        <div style={styles.controls}>
-          <button style={styles.secondaryButton} onClick={aplicarConsumo}>
-            🐷 Aplicar consumo automático
-          </button>
-
-          <input
-            style={styles.input}
-            type="number"
-            placeholder="Cantidad (kg)"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
-          />
-
-          <input
-            style={styles.input}
-            placeholder="Motivo de merma"
-            value={motivoMerma}
-            onChange={(e) => setMotivoMerma(e.target.value)}
-          />
-
-          <button style={styles.button} onClick={registrarEntrada}>
-            ➕ Entrada
-          </button>
+            <p style={{ margin: 0, color: "#475569" }}>
+              Entradas, salidas, consumos automáticos y mermas registradas en inventario.
+              El historial se mantiene contraído para no saturar la pantalla.
+            </p>
+          </div>
 
           <button
-            style={{ ...styles.button, background: "#dc2626" }}
-            onClick={registrarSalida}
+            type="button"
+            style={mostrarHistorial ? styles.button : styles.secondaryButton}
+            onClick={() => setMostrarHistorial(!mostrarHistorial)}
           >
-            ➖ Salida
-          </button>
-
-          <button
-            style={{ ...styles.button, background: "#9333ea" }}
-            onClick={registrarMerma}
-          >
-            🧾 Registrar merma
+            {mostrarHistorial ? "Ocultar historial" : "Mostrar historial"}
           </button>
         </div>
-      </div>
 
-      <div style={styles.card}>
-        <h3 style={{ margin: "0 0 14px", color: "#0f172a", fontWeight: 900 }}>
-          Historial de movimientos de inventario
-        </h3>
+        {mostrarHistorial && (
+          <>
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                flexWrap: "wrap",
+                marginBottom: "16px",
+              }}
+            >
+              <select
+                style={styles.input}
+                value={filtroTipoMovimiento}
+                onChange={(e) => setFiltroTipoMovimiento(e.target.value)}
+              >
+                <option value="todos">Todos los movimientos</option>
+                <option value="entrada">Entradas</option>
+                <option value="salida">Salidas</option>
+                <option value="consumo">Consumos automáticos</option>
+                <option value="merma">Mermas</option>
+              </select>
 
-        <p style={{ margin: "0 0 16px", color: "#475569" }}>
-          Entradas, salidas, consumos automáticos y mermas registradas en inventario.
-          El stock mostrado corresponde al valor actual del producto, no al stock histórico
-          después de cada movimiento.
-        </p>
+              <select
+                style={styles.input}
+                value={filtroProductoHistorial}
+                onChange={(e) => setFiltroProductoHistorial(e.target.value)}
+              >
+                <option value="todos">Todos los productos</option>
+                {inventario.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.nombre_producto}
+                  </option>
+                ))}
+              </select>
 
-        {movimientos.length === 0 ? (
-          <p style={{ color: "#64748b", fontWeight: 700 }}>
-            No hay movimientos registrados.
-          </p>
-        ) : (
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Fecha</th>
-                <th style={styles.th}>Producto</th>
-                <th style={styles.th}>Tipo</th>
-                <th style={styles.th}>Cantidad</th>
-                <th style={styles.th}>Stock actual del producto</th>
-                <th style={styles.th}>Descripción</th>
-              </tr>
-            </thead>
+              <select
+                style={styles.input}
+                value={limiteHistorial}
+                onChange={(e) => setLimiteHistorial(e.target.value)}
+              >
+                <option value="10">Últimos 10</option>
+                <option value="25">Últimos 25</option>
+                <option value="50">Últimos 50</option>
+                <option value="100">Últimos 100</option>
+              </select>
+            </div>
 
-            <tbody>
-              {movimientos.map((movimiento) => (
-                <tr key={movimiento.id}>
-                  <td style={styles.td}>
-                    {formatearFecha(movimiento.fecha_movimiento || movimiento.created_at)}
-                  </td>
+            {movimientos.length === 0 ? (
+              <p style={{ color: "#64748b", fontWeight: 700 }}>
+                No hay movimientos registrados.
+              </p>
+            ) : movimientosFiltrados.length === 0 ? (
+              <p style={{ color: "#64748b", fontWeight: 700 }}>
+                No hay movimientos que coincidan con los filtros seleccionados.
+              </p>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Fecha</th>
+                    <th style={styles.th}>Producto</th>
+                    <th style={styles.th}>Tipo</th>
+                    <th style={styles.th}>Cantidad</th>
+                    <th style={styles.th}>Stock actual del producto</th>
+                    <th style={styles.th}>Descripción</th>
+                  </tr>
+                </thead>
 
-                  <td style={styles.td}>
-                    {movimiento.inventario?.nombre_producto || "Producto no encontrado"}
-                  </td>
+                <tbody>
+                  {movimientosFiltrados.map((movimiento) => (
+                    <tr key={movimiento.id}>
+                      <td style={styles.td}>
+                        {formatearFecha(movimiento.fecha_movimiento || movimiento.created_at)}
+                      </td>
 
-                  <td style={styles.td}>
-                    <span style={styles.movementBadge(estiloMovimiento(movimiento))}>
-                      {etiquetaMovimiento(movimiento)}
-                    </span>
-                  </td>
+                      <td style={styles.td}>
+                        {movimiento.inventario?.nombre_producto || "Producto no encontrado"}
+                      </td>
 
-                  <td style={styles.td}>
-                    {Number(movimiento.cantidad || 0).toFixed(2)} kg
-                  </td>
+                      <td style={styles.td}>
+                        <span style={styles.movementBadge(estiloMovimiento(movimiento))}>
+                          {etiquetaMovimiento(movimiento)}
+                        </span>
+                      </td>
 
-                  <td style={styles.td}>
-                    {movimiento.inventario?.stock_kg !== undefined
-                      ? `${Number(movimiento.inventario.stock_kg || 0).toFixed(2)} kg`
-                      : "Sin dato"}
-                  </td>
+                      <td style={styles.td}>
+                        {Number(movimiento.cantidad || 0).toFixed(2)} kg
+                      </td>
 
-                  <td style={styles.td}>
-                    {movimiento.descripcion || movimiento.tipo_origen || "Sin descripción"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      <td style={styles.td}>
+                        {movimiento.inventario?.stock_kg !== undefined
+                          ? `${Number(movimiento.inventario.stock_kg || 0).toFixed(2)} kg`
+                          : "Sin dato"}
+                      </td>
+
+                      <td style={styles.td}>
+                        {movimiento.descripcion || movimiento.tipo_origen || "Sin descripción"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
         )}
       </div>
     </div>

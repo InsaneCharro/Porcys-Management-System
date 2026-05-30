@@ -125,11 +125,23 @@ export default function Maternidad() {
               }}
             >
               <div style={styles.card}>
-                <h2 style={styles.cardTitle}>🐖 Camada #{camada.id}</h2>
+                <h2 style={styles.cardTitle}>
+                  🐖 Camada {camada.madre?.identificador_unico || `#${camada.id}`}
+                </h2>
 
                 <p style={styles.text}>
                   <strong style={styles.strong}>Madre:</strong>{" "}
                   {camada.madre?.identificador_unico || "N/A"}
+                </p>
+
+                <p style={styles.text}>
+                  <strong style={styles.strong}>Corral / localización:</strong>{" "}
+                  {camada.madre?.corral?.nombre ||
+                    camada.madre?.corral_actual?.nombre ||
+                    camada.madre?.corral_nombre ||
+                    camada.corral?.nombre ||
+                    camada.corral_nombre ||
+                    "Sin corral registrado"}
                 </p>
 
                 <p style={styles.text}>

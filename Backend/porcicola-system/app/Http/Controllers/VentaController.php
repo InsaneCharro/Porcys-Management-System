@@ -16,7 +16,7 @@ class VentaController extends Controller
     {
         $request->validate([
             'cliente_id' => 'required|exists:clientes,id',
-            'tipo_venta' => 'required|in:abasto,pie_cria',
+            'tipo_venta' => 'required|in:abasto,pie_cria,engorda,descarte',
             'animales' => 'required|array|min:1',
             'animales.*.animal_id' => 'required|exists:animales,id',
             'observaciones' => 'nullable|string',
@@ -51,16 +51,38 @@ class VentaController extends Controller
 
                 $this->validarAnimalVendible($animal, $request->tipo_venta);
 
-                if ($request->tipo_venta === 'abasto') {
+                if (in_array($request->tipo_venta, ['abasto', 'pie_cria'], true)) {
+                    $precioFijo = isset($item['precio_fijo']) ? (float) $item['precio_fijo'] : 0;
+
+                    if ($precioFijo <= 0) {
+                        throw new \Exception(
+                            "Precio fijo requerido para venta de {$request->tipo_venta}."
+                        );
+                    }
+
+                    $subtotalIndividual = round($precioFijo, 2);
+
+                    $detalles[] = [
+                        'animal' => $animal,
+                        'precio_kg' => null,
+                        'peso_individual' => $this->obtenerPesoVenta($animal),
+                        'precio_fijo' => $precioFijo,
+                        'subtotal_individual' => $subtotalIndividual
+                    ];
+
+                    $subtotal += $subtotalIndividual;
+                }
+
+                if (in_array($request->tipo_venta, ['engorda', 'descarte'], true)) {
                     $precioKg = isset($item['precio_kg']) ? (float) $item['precio_kg'] : 0;
 
                     if ($precioKg <= 0) {
                         throw new \Exception(
-                            "Precio por kg requerido para venta de abasto."
+                            "Precio por kg requerido para venta de {$request->tipo_venta}."
                         );
                     }
 
-                    $peso = (float) ($animal->peso ?? 0);
+                    $peso = $this->obtenerPesoVenta($animal);
 
                     if ($peso <= 0) {
                         throw new \Exception(
@@ -75,28 +97,6 @@ class VentaController extends Controller
                         'precio_kg' => $precioKg,
                         'peso_individual' => $peso,
                         'precio_fijo' => null,
-                        'subtotal_individual' => $subtotalIndividual
-                    ];
-
-                    $subtotal += $subtotalIndividual;
-                }
-
-                if ($request->tipo_venta === 'pie_cria') {
-                    $precioFijo = isset($item['precio_fijo']) ? (float) $item['precio_fijo'] : 0;
-
-                    if ($precioFijo <= 0) {
-                        throw new \Exception(
-                            "Precio fijo requerido para venta de pie de cría."
-                        );
-                    }
-
-                    $subtotalIndividual = round($precioFijo, 2);
-
-                    $detalles[] = [
-                        'animal' => $animal,
-                        'precio_kg' => null,
-                        'peso_individual' => $animal->peso,
-                        'precio_fijo' => $precioFijo,
                         'subtotal_individual' => $subtotalIndividual
                     ];
 
@@ -215,17 +215,66 @@ class VentaController extends Controller
         );
     }
 
+    private function obtenerPesoVenta(Animal $animal): float
+    {
+        foreach (['peso', 'peso_actual', 'ultimo_peso', 'peso_kg'] as $campo) {
+            $valor = $animal->{$campo} ?? null;
+
+            if (is_numeric($valor) && (float) $valor > 0) {
+                return (float) $valor;
+            }
+        }
+
+        $tablasPeso = ['pesos', 'animal_pesos'];
+
+        foreach ($tablasPeso as $tabla) {
+            if (!Schema::hasTable($tabla) || !Schema::hasColumn($tabla, 'animal_id')) {
+                continue;
+            }
+
+            $columnaPeso = null;
+
+            foreach (['peso', 'peso_kg', 'valor', 'peso_registrado'] as $columna) {
+                if (Schema::hasColumn($tabla, $columna)) {
+                    $columnaPeso = $columna;
+                    break;
+                }
+            }
+
+            if (!$columnaPeso) {
+                continue;
+            }
+
+            $query = DB::table($tabla)
+                ->where('animal_id', $animal->id)
+                ->whereNotNull($columnaPeso)
+                ->where($columnaPeso, '>', 0);
+
+            foreach (['fecha', 'fecha_registro', 'created_at', 'id'] as $columnaOrden) {
+                if (Schema::hasColumn($tabla, $columnaOrden)) {
+                    $query->orderByDesc($columnaOrden);
+                }
+            }
+
+            $peso = $query->value($columnaPeso);
+
+            if (is_numeric($peso) && (float) $peso > 0) {
+                return (float) $peso;
+            }
+        }
+
+        return 0;
+    }
+
     private function validarAnimalVendible(Animal $animal, string $tipoVenta): void
     {
         $estado = $this->normalizarTexto($animal->estado);
 
-        $estadosBloqueados = [
+        $estadosNoVendibles = [
             'muerto',
             'muerta',
             'vendido',
             'vendida',
-            'descartado',
-            'descartada',
             'baja',
             'baja sanitaria',
             'sacrificado',
@@ -233,31 +282,75 @@ class VentaController extends Controller
             'sacrificio sanitario',
         ];
 
-        if (in_array($estado, $estadosBloqueados, true)) {
+        if (in_array($estado, $estadosNoVendibles, true)) {
             throw new \Exception(
                 "El animal {$animal->identificador_unico} no puede venderse porque su estado actual es: {$animal->estado}."
             );
         }
 
-        $clasificacion = $this->normalizarTexto($animal->clasificacion ?? '');
+        $estadosDescarte = [
+            'descartado',
+            'descartada',
+            'descarte',
+        ];
 
-        if ($tipoVenta === 'abasto' && $clasificacion !== 'abasto') {
+        if ($tipoVenta !== 'descarte' && in_array($estado, $estadosDescarte, true)) {
             throw new \Exception(
-                "El animal {$animal->identificador_unico} no está clasificado como abasto."
+                "El animal {$animal->identificador_unico} está marcado como descarte y solo puede venderse en la pestaña Descarte."
             );
         }
 
-        $clasificacionesPieCria = [
-            'pie de cria',
-            'pie cria',
-            'reproductor',
-            'reproductora',
-        ];
+        $clasificacion = $this->normalizarTexto($animal->clasificacion ?? '');
+        $etapa = $this->normalizarTexto($animal->etapa_actual ?? '');
 
-        if ($tipoVenta === 'pie_cria' && !in_array($clasificacion, $clasificacionesPieCria, true)) {
-            throw new \Exception(
-                "El animal {$animal->identificador_unico} no está clasificado como pie de cría."
-            );
+        if ($tipoVenta === 'abasto') {
+            $clasificacionesAbasto = ['abasto', 'linea carnica', 'carnica'];
+            $etapasAbasto = ['lechon', 'destete', 'crecimiento'];
+
+            if (!in_array($clasificacion, $clasificacionesAbasto, true) && !in_array($etapa, $etapasAbasto, true)) {
+                throw new \Exception(
+                    "El animal {$animal->identificador_unico} no está clasificado como abasto."
+                );
+            }
+        }
+
+        if ($tipoVenta === 'pie_cria') {
+            $clasificacionesPieCria = [
+                'pie de cria',
+                'pie cria',
+                'reproductor',
+                'reproductora',
+            ];
+
+            if (!in_array($clasificacion, $clasificacionesPieCria, true)) {
+                throw new \Exception(
+                    "El animal {$animal->identificador_unico} no está clasificado como pie de cría."
+                );
+            }
+        }
+
+        if ($tipoVenta === 'engorda') {
+            $valoresEngorda = ['engorda', 'finalizacion', 'finalización'];
+
+            if (!in_array($clasificacion, $valoresEngorda, true) && !in_array($etapa, $valoresEngorda, true)) {
+                throw new \Exception(
+                    "El animal {$animal->identificador_unico} no pertenece a engorda."
+                );
+            }
+        }
+
+        if ($tipoVenta === 'descarte') {
+            $valoresDescarte = ['descarte', 'descartado', 'descartada'];
+
+            if (
+                !in_array($estado, $valoresDescarte, true) &&
+                !in_array($clasificacion, $valoresDescarte, true) &&
+                !in_array($etapa, $valoresDescarte, true)
+            ) {
+                throw new \Exception(
+                    "El animal {$animal->identificador_unico} no está marcado como descarte."
+                );
+            }
         }
     }
 

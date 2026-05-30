@@ -496,6 +496,7 @@ export default function Gestaciones() {
                 <tr>
                   <th style={styles.th}>ID</th>
                   <th style={styles.th}>Hembra</th>
+                  <th style={styles.th}>Tipo</th>
                   <th style={styles.th}>Inicio</th>
                   <th style={styles.th}>Parto probable</th>
                   <th style={styles.th}>Estado</th>
@@ -508,6 +509,9 @@ export default function Gestaciones() {
                   <tr key={g.id}>
                     <td style={styles.td}>{g.id}</td>
                     <td style={styles.td}>{g.animal?.identificador_unico || "N/A"}</td>
+                    <td style={styles.td}>
+                      {g.tipo_servicio === "inseminacion" ? "Inseminación" : "Natural"}
+                    </td>
                     <td style={styles.td}>{g.fecha_inicio || g.fecha_servicio}</td>
                     <td style={styles.td}>{g.fecha_probable_parto}</td>
                     <td style={styles.td}>{estadoBadge(g.estado)}</td>

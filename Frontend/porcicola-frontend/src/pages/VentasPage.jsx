@@ -22,12 +22,20 @@ export default function VentasPage() {
   });
 
   const [abastoCliente, setAbastoCliente] = useState('');
-  const [precioKg, setPrecioKg] = useState('');
+  const [precioFijoAbasto, setPrecioFijoAbasto] = useState('');
   const [seleccionados, setSeleccionados] = useState([]);
 
   const [pieCliente, setPieCliente] = useState('');
   const [pieSeleccionados, setPieSeleccionados] = useState([]);
   const [precioFijo, setPrecioFijo] = useState('');
+
+  const [engordaCliente, setEngordaCliente] = useState('');
+  const [engordaSeleccionados, setEngordaSeleccionados] = useState([]);
+  const [precioKgEngorda, setPrecioKgEngorda] = useState('');
+
+  const [descarteCliente, setDescarteCliente] = useState('');
+  const [descarteSeleccionados, setDescarteSeleccionados] = useState([]);
+  const [precioKgDescarte, setPrecioKgDescarte] = useState('');
 
   const [mensaje, setMensaje] = useState('');
 
@@ -50,8 +58,6 @@ export default function VentasPage() {
     'muerta',
     'vendido',
     'vendida',
-    'descartado',
-    'descartada',
     'baja',
     'baja sanitaria',
     'sacrificado',
@@ -59,16 +65,40 @@ export default function VentasPage() {
     'sacrificio sanitario'
   ];
 
+  const estadosDescarte = ['descartado', 'descartada', 'descarte'];
+
   const esAnimalBloqueado = (animal) => {
     const estado = normalizarTexto(animal.estado);
     return estadosBloqueados.includes(estado);
   };
 
+  const esAnimalEnDescarte = (animal) => {
+    const estado = normalizarTexto(animal.estado);
+    const clasificacion = normalizarTexto(animal.clasificacion);
+    const etapa = normalizarTexto(animal.etapa_actual);
+
+    return (
+      estadosDescarte.includes(estado) ||
+      ['descarte', 'descartado', 'descartada'].includes(clasificacion) ||
+      ['descarte', 'descartado', 'descartada'].includes(etapa)
+    );
+  };
+
   const esAnimalAbasto = (animal) => {
-    return normalizarTexto(animal.clasificacion) === 'abasto';
+    if (esAnimalBloqueado(animal) || esAnimalEnDescarte(animal)) return false;
+
+    const clasificacion = normalizarTexto(animal.clasificacion);
+    const etapa = normalizarTexto(animal.etapa_actual);
+
+    return (
+      ['abasto', 'linea carnica', 'carnica'].includes(clasificacion) ||
+      ['lechon', 'destete', 'crecimiento'].includes(etapa)
+    );
   };
 
   const esAnimalPieCria = (animal) => {
+    if (esAnimalBloqueado(animal) || esAnimalEnDescarte(animal)) return false;
+
     const clasificacion = normalizarTexto(animal.clasificacion);
 
     return [
@@ -79,6 +109,80 @@ export default function VentasPage() {
     ].includes(clasificacion);
   };
 
+  const esAnimalEngorda = (animal) => {
+    if (esAnimalBloqueado(animal) || esAnimalEnDescarte(animal)) return false;
+
+    const clasificacion = normalizarTexto(animal.clasificacion);
+    const etapa = normalizarTexto(animal.etapa_actual);
+
+    return ['engorda', 'finalizacion', 'finalización'].includes(clasificacion) ||
+      ['engorda', 'finalizacion', 'finalización'].includes(etapa);
+  };
+
+  const esAnimalDescarte = (animal) => {
+    if (esAnimalBloqueado(animal)) return false;
+    return esAnimalEnDescarte(animal);
+  };
+
+  const extraerPesoNumerico = (valor) => {
+    const numero = Number(valor || 0);
+    return Number.isFinite(numero) && numero > 0 ? numero : 0;
+  };
+
+  const obtenerPesoAnimal = (animal) => {
+    const posiblesPesos = [
+      animal?.peso,
+      animal?.peso_actual,
+      animal?.ultimo_peso,
+      animal?.ultimo_peso_kg,
+      animal?.peso_kg,
+    ];
+
+    for (const peso of posiblesPesos) {
+      const pesoNumerico = extraerPesoNumerico(peso);
+
+      if (pesoNumerico > 0) {
+        return pesoNumerico;
+      }
+    }
+
+    return 0;
+  };
+
+  const obtenerUltimoPesoDesdeHistorial = (payload) => {
+    const lista =
+      Array.isArray(payload)
+        ? payload
+        : payload?.data || payload?.pesos || payload?.historial || [];
+
+    if (!Array.isArray(lista) || lista.length === 0) {
+      return 0;
+    }
+
+    const ordenados = [...lista].sort((a, b) => {
+      const fechaA = new Date(a.fecha || a.fecha_registro || a.created_at || 0).getTime();
+      const fechaB = new Date(b.fecha || b.fecha_registro || b.created_at || 0).getTime();
+
+      if (fechaB !== fechaA) {
+        return fechaB - fechaA;
+      }
+
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+
+    for (const item of ordenados) {
+      const peso = extraerPesoNumerico(
+        item.peso || item.peso_kg || item.valor || item.peso_registrado
+      );
+
+      if (peso > 0) {
+        return peso;
+      }
+    }
+
+    return 0;
+  };
+
   const formatoMoneda = (valor) => {
     return Number(valor || 0).toLocaleString('es-MX', {
       style: 'currency',
@@ -86,19 +190,27 @@ export default function VentasPage() {
     });
   };
 
-    const etiquetaTipoVenta = (tipo) => {
-      const normalizado = normalizarTexto(tipo);
+  const etiquetaTipoVenta = (tipo) => {
+    const normalizado = normalizarTexto(tipo);
 
-      if (normalizado === 'pie cria' || normalizado === 'pie de cria') {
-        return 'Pie de cría';
-      }
+    if (normalizado === 'pie cria' || normalizado === 'pie de cria') {
+      return 'Pie de cría';
+    }
 
-      if (normalizado === 'abasto') {
-        return 'Abasto';
-      }
+    if (normalizado === 'abasto') {
+      return 'Abasto';
+    }
 
-      return tipo || 'N/A';
-    };
+    if (normalizado === 'engorda') {
+      return 'Engorda';
+    }
+
+    if (normalizado === 'descarte') {
+      return 'Descarte';
+    }
+
+    return tipo || 'N/A';
+  };
 
   const cargarDatos = async () => {
     setLoading(true);
@@ -113,7 +225,52 @@ export default function VentasPage() {
         axios.get(`${API}/ventas/tipos`)
       ]);
 
-      setAnimales(animalesRes.data || []);
+      const animalesBase = animalesRes.data || [];
+
+      const animalesConPeso = await Promise.all(
+        animalesBase.map(async (animal) => {
+          const pesoDirecto = obtenerPesoAnimal(animal);
+
+          if (pesoDirecto > 0) {
+            return {
+              ...animal,
+              peso: pesoDirecto,
+            };
+          }
+
+          try {
+            const historialPesoRes = await axios.get(`${API}/pesos/historial/${animal.id}`);
+            const pesoHistorial = obtenerUltimoPesoDesdeHistorial(historialPesoRes.data);
+
+            if (pesoHistorial > 0) {
+              return {
+                ...animal,
+                peso: pesoHistorial,
+              };
+            }
+          } catch (error) {
+            console.warn(`No se pudo cargar historial de peso del animal ${animal.id}`);
+          }
+
+          try {
+            const pesoRes = await axios.get(`${API}/pesos/${animal.id}`);
+            const pesoAlternativo = obtenerUltimoPesoDesdeHistorial(pesoRes.data);
+
+            if (pesoAlternativo > 0) {
+              return {
+                ...animal,
+                peso: pesoAlternativo,
+              };
+            }
+          } catch (error) {
+            console.warn(`No se pudo cargar peso alternativo del animal ${animal.id}`);
+          }
+
+          return animal;
+        })
+      );
+
+      setAnimales(animalesConPeso);
       setClientes(clientesRes.data || []);
       setHistorial(historialRes.data || []);
       setResumen(resumenRes.data || {});
@@ -127,27 +284,43 @@ export default function VentasPage() {
   };
 
   const animalesDisponibles = animales.filter((animal) => !esAnimalBloqueado(animal));
-
   const animalesBloqueados = animales.filter((animal) => esAnimalBloqueado(animal));
-
   const animalesAbasto = animalesDisponibles.filter((animal) => esAnimalAbasto(animal));
-
   const animalesPie = animalesDisponibles.filter((animal) => esAnimalPieCria(animal));
+  const animalesEngorda = animalesDisponibles.filter((animal) => esAnimalEngorda(animal));
+  const animalesDescarte = animalesDisponibles.filter((animal) => esAnimalDescarte(animal));
 
   const toggle = (id, setter, arreglo) => {
     setter(arreglo.includes(id) ? arreglo.filter((x) => x !== id) : [...arreglo, id]);
   };
 
-  const subtotalAbasto = animalesAbasto
-    .filter((animal) => seleccionados.includes(animal.id))
-    .reduce((acc, animal) => acc + (Number(animal.peso || 0) * Number(precioKg || 0)), 0);
+  const subtotalFijo = (ids, precio) => ids.length * Number(precio || 0);
 
+  const subtotalPorKg = (ids, listaAnimales, precioKgVenta) => {
+    return listaAnimales
+      .filter((animal) => ids.includes(animal.id))
+      .reduce(
+        (acc, animal) =>
+          acc + obtenerPesoAnimal(animal) * Number(precioKgVenta || 0),
+        0
+      );
+  };
+
+  const subtotalAbasto = subtotalFijo(seleccionados, precioFijoAbasto);
   const ivaAbasto = subtotalAbasto * 0.16;
   const totalAbasto = subtotalAbasto + ivaAbasto;
 
-  const subtotalPie = pieSeleccionados.length * Number(precioFijo || 0);
+  const subtotalPie = subtotalFijo(pieSeleccionados, precioFijo);
   const ivaPie = subtotalPie * 0.16;
   const totalPie = subtotalPie + ivaPie;
+
+  const subtotalEngorda = subtotalPorKg(engordaSeleccionados, animalesEngorda, precioKgEngorda);
+  const ivaEngorda = subtotalEngorda * 0.16;
+  const totalEngorda = subtotalEngorda + ivaEngorda;
+
+  const subtotalDescarte = subtotalPorKg(descarteSeleccionados, animalesDescarte, precioKgDescarte);
+  const ivaDescarte = subtotalDescarte * 0.16;
+  const totalDescarte = subtotalDescarte + ivaDescarte;
 
   const crearCliente = async () => {
     if (!clienteForm.nombre.trim()) {
@@ -188,94 +361,177 @@ export default function VentasPage() {
     }
   };
 
-  const venderAbasto = async () => {
-    if (!abastoCliente) {
+  const venderPrecioFijo = async ({
+    clienteId,
+    setCliente,
+    precio,
+    setPrecio,
+    seleccion,
+    setSeleccion,
+    animalesValidos,
+    tipoVenta,
+    etiqueta
+  }) => {
+    if (!clienteId) {
       alert('Selecciona un cliente.');
       return;
     }
 
-    if (!precioKg || Number(precioKg) <= 0) {
-      alert('Captura un precio por kg válido.');
-      return;
-    }
-
-    if (seleccionados.length === 0) {
-      alert('Selecciona al menos un animal de abasto.');
-      return;
-    }
-
-    const seleccionValidada = animalesAbasto.filter((animal) => seleccionados.includes(animal.id));
-
-    if (seleccionValidada.length !== seleccionados.length) {
-      alert('Hay animales seleccionados que ya no están disponibles. Actualiza la página.');
-      return;
-    }
-
-    try {
-      await axios.post(`${API}/ventas`, {
-        cliente_id: Number(abastoCliente),
-        tipo_venta: 'abasto',
-        animales: seleccionados.map((id) => ({
-          animal_id: Number(id),
-          precio_kg: Number(precioKg)
-        }))
-      });
-
-      setSeleccionados([]);
-      setPrecioKg('');
-      setAbastoCliente('');
-      setMensaje('Venta de abasto registrada correctamente.');
-
-      cargarDatos();
-    } catch (error) {
-      console.error(error.response?.data || error);
-      alert(error.response?.data?.error || 'Error registrando venta de abasto.');
-    }
-  };
-
-  const venderPie = async () => {
-    if (!pieCliente) {
-      alert('Selecciona un cliente.');
-      return;
-    }
-
-    if (!precioFijo || Number(precioFijo) <= 0) {
+    if (!precio || Number(precio) <= 0) {
       alert('Captura un precio fijo válido.');
       return;
     }
 
-    if (pieSeleccionados.length === 0) {
-      alert('Selecciona al menos un animal de pie de cría.');
+    if (seleccion.length === 0) {
+      alert(`Selecciona al menos un animal de ${etiqueta}.`);
       return;
     }
 
-    const seleccionValidada = animalesPie.filter((animal) => pieSeleccionados.includes(animal.id));
+    const seleccionValidada = animalesValidos.filter((animal) => seleccion.includes(animal.id));
 
-    if (seleccionValidada.length !== pieSeleccionados.length) {
+    if (seleccionValidada.length !== seleccion.length) {
       alert('Hay animales seleccionados que ya no están disponibles. Actualiza la página.');
       return;
     }
 
     try {
       await axios.post(`${API}/ventas`, {
-        cliente_id: Number(pieCliente),
-        tipo_venta: 'pie_cria',
-        animales: pieSeleccionados.map((id) => ({
+        cliente_id: Number(clienteId),
+        tipo_venta: tipoVenta,
+        animales: seleccion.map((id) => ({
           animal_id: Number(id),
-          precio_fijo: Number(precioFijo)
+          precio_fijo: Number(precio)
         }))
       });
 
-      setPieSeleccionados([]);
-      setPrecioFijo('');
-      setPieCliente('');
-      setMensaje('Venta de pie de cría registrada correctamente.');
+      setSeleccion([]);
+      setPrecio('');
+      setCliente('');
+      setMensaje(`Venta de ${etiqueta} registrada correctamente.`);
 
       cargarDatos();
     } catch (error) {
       console.error(error.response?.data || error);
-      alert(error.response?.data?.error || 'Error registrando venta de pie de cría.');
+      alert(error.response?.data?.error || `Error registrando venta de ${etiqueta}.`);
     }
+  };
+
+  const venderPorKg = async ({
+    clienteId,
+    setCliente,
+    precioKgVenta,
+    setPrecioKgVenta,
+    seleccion,
+    setSeleccion,
+    animalesValidos,
+    tipoVenta,
+    etiqueta
+  }) => {
+    if (!clienteId) {
+      alert('Selecciona un cliente.');
+      return;
+    }
+
+    if (!precioKgVenta || Number(precioKgVenta) <= 0) {
+      alert('Captura un precio por kg válido.');
+      return;
+    }
+
+    if (seleccion.length === 0) {
+      alert(`Selecciona al menos un animal de ${etiqueta}.`);
+      return;
+    }
+
+    const seleccionValidada = animalesValidos.filter((animal) => seleccion.includes(animal.id));
+
+    if (seleccionValidada.length !== seleccion.length) {
+      alert('Hay animales seleccionados que ya no están disponibles. Actualiza la página.');
+      return;
+    }
+
+    const sinPeso = seleccionValidada.find((animal) => obtenerPesoAnimal(animal) <= 0);
+
+    if (sinPeso) {
+      alert(`El animal ${sinPeso.identificador_unico} no tiene peso válido registrado.`);
+      return;
+    }
+
+    try {
+      await axios.post(`${API}/ventas`, {
+        cliente_id: Number(clienteId),
+        tipo_venta: tipoVenta,
+        animales: seleccion.map((id) => ({
+          animal_id: Number(id),
+          precio_kg: Number(precioKgVenta)
+        }))
+      });
+
+      setSeleccion([]);
+      setPrecioKgVenta('');
+      setCliente('');
+      setMensaje(`Venta de ${etiqueta} registrada correctamente.`);
+
+      cargarDatos();
+    } catch (error) {
+      console.error(error.response?.data || error);
+      alert(error.response?.data?.error || `Error registrando venta de ${etiqueta}.`);
+    }
+  };
+
+  const venderAbasto = async () => {
+    await venderPrecioFijo({
+      clienteId: abastoCliente,
+      setCliente: setAbastoCliente,
+      precio: precioFijoAbasto,
+      setPrecio: setPrecioFijoAbasto,
+      seleccion: seleccionados,
+      setSeleccion: setSeleccionados,
+      animalesValidos: animalesAbasto,
+      tipoVenta: 'abasto',
+      etiqueta: 'abasto'
+    });
+  };
+
+  const venderPie = async () => {
+    await venderPrecioFijo({
+      clienteId: pieCliente,
+      setCliente: setPieCliente,
+      precio: precioFijo,
+      setPrecio: setPrecioFijo,
+      seleccion: pieSeleccionados,
+      setSeleccion: setPieSeleccionados,
+      animalesValidos: animalesPie,
+      tipoVenta: 'pie_cria',
+      etiqueta: 'pie de cría'
+    });
+  };
+
+  const venderEngorda = async () => {
+    await venderPorKg({
+      clienteId: engordaCliente,
+      setCliente: setEngordaCliente,
+      precioKgVenta: precioKgEngorda,
+      setPrecioKgVenta: setPrecioKgEngorda,
+      seleccion: engordaSeleccionados,
+      setSeleccion: setEngordaSeleccionados,
+      animalesValidos: animalesEngorda,
+      tipoVenta: 'engorda',
+      etiqueta: 'engorda'
+    });
+  };
+
+  const venderDescarte = async () => {
+    await venderPorKg({
+      clienteId: descarteCliente,
+      setCliente: setDescarteCliente,
+      precioKgVenta: precioKgDescarte,
+      setPrecioKgVenta: setPrecioKgDescarte,
+      seleccion: descarteSeleccionados,
+      setSeleccion: setDescarteSeleccionados,
+      animalesValidos: animalesDescarte,
+      tipoVenta: 'descarte',
+      etiqueta: 'descarte'
+    });
   };
 
   const abrirReporteVentas = () => {
@@ -355,6 +611,144 @@ export default function VentasPage() {
     }
   };
 
+  const renderTablaVenta = ({
+    titulo,
+    descripcion,
+    cliente,
+    setCliente,
+    precio,
+    setPrecio,
+    placeholderPrecio,
+    animalesVenta,
+    seleccion,
+    setSeleccion,
+    tipoCalculo,
+    subtotal,
+    iva,
+    total,
+    onVender,
+    textoVacio,
+    mostrarBotonSeleccionarTodos = false
+  }) => (
+    <div style={styles.card}>
+      <h2>{titulo}</h2>
+
+      {descripcion && (
+        <p style={{ color: '#475569', marginTop: '-6px' }}>{descripcion}</p>
+      )}
+
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <select
+          style={styles.input}
+          value={cliente}
+          onChange={(e) => setCliente(e.target.value)}
+        >
+          <option value="">Cliente</option>
+          {clientes.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.nombre}
+            </option>
+          ))}
+        </select>
+
+        <input
+          style={styles.input}
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder={placeholderPrecio}
+          value={precio}
+          onChange={(e) => setPrecio(e.target.value)}
+        />
+
+        {mostrarBotonSeleccionarTodos && (
+          <>
+            <button
+              style={styles.btn(false)}
+              type="button"
+              onClick={() => setSeleccion(animalesVenta.map((animal) => animal.id))}
+            >
+              Seleccionar todos para lote
+            </button>
+
+            <button
+              style={styles.btn(false)}
+              type="button"
+              onClick={() => setSeleccion([])}
+            >
+              Limpiar selección
+            </button>
+          </>
+        )}
+      </div>
+
+      <p style={{ color: '#475569', fontWeight: 700 }}>
+        Animales seleccionados: {seleccion.length} de {animalesVenta.length}
+      </p>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={styles.th}></th>
+            <th style={styles.th}>Identificador</th>
+            <th style={styles.th}>Sexo</th>
+            <th style={styles.th}>Estado</th>
+            <th style={styles.th}>Etapa</th>
+            <th style={styles.th}>Clasificación</th>
+            <th style={styles.th}>Peso</th>
+            <th style={styles.th}>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {animalesVenta.map((animal) => {
+            const pesoAnimal = obtenerPesoAnimal(animal);
+
+            const subtotalAnimal = tipoCalculo === 'kg'
+              ? pesoAnimal * Number(precio || 0)
+              : Number(precio || 0);
+
+            return (
+              <tr key={animal.id}>
+                <td style={styles.td}>
+                  <input
+                    type="checkbox"
+                    checked={seleccion.includes(animal.id)}
+                    onChange={() => toggle(animal.id, setSeleccion, seleccion)}
+                  />
+                </td>
+                <td style={styles.td}>{animal.identificador_unico}</td>
+                <td style={styles.td}>{animal.sexo || 'N/A'}</td>
+                <td style={styles.td}>
+                  <span style={styles.badgeOk}>{animal.estado || 'activo'}</span>
+                </td>
+                <td style={styles.td}>{animal.etapa_actual || 'N/A'}</td>
+                <td style={styles.td}>{animal.clasificacion || 'N/A'}</td>
+                <td style={styles.td}>{Number(pesoAnimal || 0).toFixed(2)} kg</td>
+                <td style={styles.td}>{formatoMoneda(subtotalAnimal)}</td>
+              </tr>
+            );
+          })}
+
+          {animalesVenta.length === 0 && (
+            <tr>
+              <td style={styles.td} colSpan="8">
+                {textoVacio}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: '20px', fontWeight: 800 }}>
+        Subtotal {formatoMoneda(subtotal)} | IVA {formatoMoneda(iva)} | Total {formatoMoneda(total)}
+      </div>
+
+      <button style={{ ...styles.btn(true), marginTop: '15px' }} onClick={onVender}>
+        Registrar venta
+      </button>
+    </div>
+  );
+
   if (loading) {
     return <div style={styles.container}>Cargando comercialización...</div>;
   }
@@ -366,8 +760,8 @@ export default function VentasPage() {
       </h1>
 
       <p style={{ color: '#475569', marginTop: 0, marginBottom: '20px' }}>
-        Ventas blindadas: el frontend oculta animales muertos, vendidos, descartados o dados de baja.
-        El backend sigue siendo la validación principal.
+        Ventas blindadas: el frontend oculta animales muertos, vendidos o dados de baja.
+        Abasto y pie de cría se venden por precio fijo; engorda y descarte se venden por kilo.
       </p>
 
       {mensaje && (
@@ -392,6 +786,12 @@ export default function VentasPage() {
         </button>
         <button style={styles.btn(tab === 'pie')} onClick={() => setTab('pie')}>
           PIE DE CRÍA
+        </button>
+        <button style={styles.btn(tab === 'engorda')} onClick={() => setTab('engorda')}>
+          ENGORDA
+        </button>
+        <button style={styles.btn(tab === 'descarte')} onClick={() => setTab('descarte')}>
+          DESCARTE
         </button>
         <button style={styles.btn(tab === 'historial')} onClick={() => setTab('historial')}>
           HISTORIAL
@@ -428,6 +828,14 @@ export default function VentasPage() {
         <div style={styles.card}>
           <h3 style={{ marginTop: 0 }}>Pie de cría vendible</h3>
           <p style={{ fontSize: '28px', fontWeight: 800 }}>{animalesPie.length}</p>
+        </div>
+        <div style={styles.card}>
+          <h3 style={{ marginTop: 0 }}>Engorda vendible</h3>
+          <p style={{ fontSize: '28px', fontWeight: 800 }}>{animalesEngorda.length}</p>
+        </div>
+        <div style={styles.card}>
+          <h3 style={{ marginTop: 0 }}>Descarte vendible</h3>
+          <p style={{ fontSize: '28px', fontWeight: 800 }}>{animalesDescarte.length}</p>
         </div>
       </div>
 
@@ -475,6 +883,8 @@ export default function VentasPage() {
             >
               <option value="abasto">Abasto</option>
               <option value="pie_cria">Pie de cría</option>
+              <option value="engorda">Engorda</option>
+              <option value="descarte">Descarte</option>
               <option value="distribuidor">Distribuidor</option>
               <option value="otro">Otro</option>
             </select>
@@ -528,171 +938,89 @@ export default function VentasPage() {
         </div>
       )}
 
-      {tab === 'abasto' && (
-        <div style={styles.card}>
-          <h2>Venta Abasto</h2>
+      {tab === 'abasto' &&
+      renderTablaVenta({
+        titulo: "Venta Abasto",
+        descripcion:
+          "Abasto se vende por precio fijo por animal. Puedes seleccionar todos para vender por lote.",
+        cliente: abastoCliente,
+        setCliente: setAbastoCliente,
+        precio: precioFijoAbasto,
+        setPrecio: setPrecioFijoAbasto,
+        placeholderPrecio: "Precio fijo por animal",
+        animalesVenta: animalesAbasto,
+        seleccion: seleccionados,
+        setSeleccion: setSeleccionados,
+        tipoCalculo: "fijo",
+        subtotal: subtotalAbasto,
+        iva: ivaAbasto,
+        total: totalAbasto,
+        onVender: venderAbasto,
+        textoVacio: "No hay animales de abasto disponibles para venta.",
+        mostrarBotonSeleccionarTodos: true,
+      })}
 
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-            <select
-              style={styles.input}
-              value={abastoCliente}
-              onChange={(e) => setAbastoCliente(e.target.value)}
-            >
-              <option value="">Cliente</option>
-              {clientes.map((cliente) => (
-                <option key={cliente.id} value={cliente.id}>
-                  {cliente.nombre}
-                </option>
-              ))}
-            </select>
+      {tab === 'pie' &&
+        renderTablaVenta({
+          titulo: "Pie de Cría",
+          descripcion: "Pie de cría se vende por precio fijo por animal.",
+          cliente: pieCliente,
+          setCliente: setPieCliente,
+          precio: precioFijo,
+          setPrecio: setPrecioFijo,
+          placeholderPrecio: "Precio fijo por animal",
+          animalesVenta: animalesPie,
+          seleccion: pieSeleccionados,
+          setSeleccion: setPieSeleccionados,
+          tipoCalculo: "fijo",
+          subtotal: subtotalPie,
+          iva: ivaPie,
+          total: totalPie,
+          onVender: venderPie,
+          textoVacio: "No hay animales de pie de cría disponibles para venta.",
+        })}
 
-            <input
-              style={styles.input}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Precio por kg"
-              value={precioKg}
-              onChange={(e) => setPrecioKg(e.target.value)}
-            />
-          </div>
+      {tab === 'engorda' &&
+        renderTablaVenta({
+          titulo: "Engorda",
+          descripcion:
+            "Engorda se vende por kilo. El sistema multiplica peso registrado por precio por kg.",
+          cliente: engordaCliente,
+          setCliente: setEngordaCliente,
+          precio: precioKgEngorda,
+          setPrecio: setPrecioKgEngorda,
+          placeholderPrecio: "Precio por kg",
+          animalesVenta: animalesEngorda,
+          seleccion: engordaSeleccionados,
+          setSeleccion: setEngordaSeleccionados,
+          tipoCalculo: "kg",
+          subtotal: subtotalEngorda,
+          iva: ivaEngorda,
+          total: totalEngorda,
+          onVender: venderEngorda,
+          textoVacio: "No hay animales de engorda disponibles para venta.",
+        })}
 
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={styles.th}></th>
-                <th style={styles.th}>ID</th>
-                <th style={styles.th}>Sexo</th>
-                <th style={styles.th}>Estado</th>
-                <th style={styles.th}>Clasificación</th>
-                <th style={styles.th}>Peso</th>
-                <th style={styles.th}>Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {animalesAbasto.map((animal) => (
-                <tr key={animal.id}>
-                  <td style={styles.td}>
-                    <input
-                      type="checkbox"
-                      checked={seleccionados.includes(animal.id)}
-                      onChange={() => toggle(animal.id, setSeleccionados, seleccionados)}
-                    />
-                  </td>
-                  <td style={styles.td}>{animal.identificador_unico}</td>
-                  <td style={styles.td}>{animal.sexo || 'N/A'}</td>
-                  <td style={styles.td}>
-                    <span style={styles.badgeOk}>{animal.estado || 'activo'}</span>
-                  </td>
-                  <td style={styles.td}>{animal.clasificacion || 'N/A'}</td>
-                  <td style={styles.td}>{Number(animal.peso || 0).toFixed(2)} kg</td>
-                  <td style={styles.td}>
-                    {formatoMoneda(Number(animal.peso || 0) * Number(precioKg || 0))}
-                  </td>
-                </tr>
-              ))}
-
-              {animalesAbasto.length === 0 && (
-                <tr>
-                  <td style={styles.td} colSpan="7">
-                    No hay animales de abasto disponibles para venta.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          <div style={{ marginTop: '20px', fontWeight: 800 }}>
-            Subtotal {formatoMoneda(subtotalAbasto)} | IVA {formatoMoneda(ivaAbasto)} | Total {formatoMoneda(totalAbasto)}
-          </div>
-
-          <button style={{ ...styles.btn(true), marginTop: '15px' }} onClick={venderAbasto}>
-            Registrar venta
-          </button>
-        </div>
-      )}
-
-      {tab === 'pie' && (
-        <div style={styles.card}>
-          <h2>Pie de Cría</h2>
-
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-            <select
-              style={styles.input}
-              value={pieCliente}
-              onChange={(e) => setPieCliente(e.target.value)}
-            >
-              <option value="">Cliente</option>
-              {clientes.map((cliente) => (
-                <option key={cliente.id} value={cliente.id}>
-                  {cliente.nombre}
-                </option>
-              ))}
-            </select>
-
-            <input
-              style={styles.input}
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="Precio fijo por animal"
-              value={precioFijo}
-              onChange={(e) => setPrecioFijo(e.target.value)}
-            />
-          </div>
-
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={styles.th}></th>
-                <th style={styles.th}>ID</th>
-                <th style={styles.th}>Sexo</th>
-                <th style={styles.th}>Estado</th>
-                <th style={styles.th}>Clasificación</th>
-                <th style={styles.th}>Peso</th>
-                <th style={styles.th}>Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {animalesPie.map((animal) => (
-                <tr key={animal.id}>
-                  <td style={styles.td}>
-                    <input
-                      type="checkbox"
-                      checked={pieSeleccionados.includes(animal.id)}
-                      onChange={() => toggle(animal.id, setPieSeleccionados, pieSeleccionados)}
-                    />
-                  </td>
-                  <td style={styles.td}>{animal.identificador_unico}</td>
-                  <td style={styles.td}>{animal.sexo || 'N/A'}</td>
-                  <td style={styles.td}>
-                    <span style={styles.badgeOk}>{animal.estado || 'activo'}</span>
-                  </td>
-                  <td style={styles.td}>{animal.clasificacion || 'N/A'}</td>
-                  <td style={styles.td}>{Number(animal.peso || 0).toFixed(2)} kg</td>
-                  <td style={styles.td}>{formatoMoneda(Number(precioFijo || 0))}</td>
-                </tr>
-              ))}
-
-              {animalesPie.length === 0 && (
-                <tr>
-                  <td style={styles.td} colSpan="7">
-                    No hay animales de pie de cría disponibles para venta.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          <div style={{ marginTop: '20px', fontWeight: 800 }}>
-            Subtotal {formatoMoneda(subtotalPie)} | IVA {formatoMoneda(ivaPie)} | Total {formatoMoneda(totalPie)}
-          </div>
-
-          <button style={{ ...styles.btn(true), marginTop: '15px' }} onClick={venderPie}>
-            Registrar venta
-          </button>
-        </div>
-      )}
+      {tab === 'descarte' &&
+        renderTablaVenta({
+          titulo: "Descarte",
+          descripcion:
+            "Descarte se vende por kilo. Se consideran animales marcados como descarte o descartados.",
+          cliente: descarteCliente,
+          setCliente: setDescarteCliente,
+          precio: precioKgDescarte,
+          setPrecio: setPrecioKgDescarte,
+          placeholderPrecio: "Precio por kg",
+          animalesVenta: animalesDescarte,
+          seleccion: descarteSeleccionados,
+          setSeleccion: setDescarteSeleccionados,
+          tipoCalculo: "kg",
+          subtotal: subtotalDescarte,
+          iva: ivaDescarte,
+          total: totalDescarte,
+          onVender: venderDescarte,
+          textoVacio: "No hay animales de descarte disponibles para venta.",
+        })}
 
       {tab === 'historial' && (
         <div style={styles.card}>
@@ -833,7 +1161,7 @@ export default function VentasPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={styles.th}>ID</th>
+                  <th style={styles.th}>Identificador</th>
                   <th style={styles.th}>Sexo</th>
                   <th style={styles.th}>Estado</th>
                   <th style={styles.th}>Clasificación</th>
