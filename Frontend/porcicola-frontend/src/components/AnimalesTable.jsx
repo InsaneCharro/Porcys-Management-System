@@ -15,7 +15,7 @@ export default function AnimalesTable() {
     identificador: "",
     sexo: "",
     etapa: "",
-    estado: "",
+    estado: "activo",
   });
 
   useEffect(() => {
@@ -51,7 +51,7 @@ export default function AnimalesTable() {
       identificador: "",
       sexo: "",
       etapa: "",
-      estado: "",
+      estado: "activo",
     });
   };
 
@@ -384,12 +384,12 @@ export default function AnimalesTable() {
           value={filtros.estado}
           onChange={handleFiltro}
         >
-          <option value="">Estado</option>
-          <option value="activo">Activo</option>
-          <option value="vendido">Vendido</option>
-          <option value="muerto">Muerto</option>
-          <option value="descartado">Descartado</option>
-          <option value="baja">Baja</option>
+          <option value="activo">Activos</option>
+          <option value="">Todos / histórico</option>
+          <option value="vendido">Vendidos</option>
+          <option value="muerto">Muertos</option>
+          <option value="descartado">Descartados</option>
+          <option value="baja">Bajas</option>
         </select>
 
         <button style={styles.secondaryButton} onClick={limpiarFiltros}>
@@ -399,6 +399,18 @@ export default function AnimalesTable() {
         <button style={styles.button} onClick={obtenerAnimales}>
           Actualizar
         </button>
+        <p
+          style={{
+            width: "100%",
+            margin: "4px 0 0",
+            color: "#64748b",
+            fontWeight: 700,
+            fontSize: "13px",
+          }}
+        >
+          Vista operativa: por defecto se muestran solo animales activos. Para consultar
+          vendidos, muertos, descartados o bajas, usa el filtro Estado.
+        </p>
       </div>
 
       {loading ? (
